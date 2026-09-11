@@ -161,8 +161,18 @@ type Database(path: string) =
         add "$text" SqliteType.Text query.Text "instr(lower(message), lower($text)) > 0"
         add "$host" SqliteType.Text query.Hostname "hostname = $host COLLATE NOCASE"
         add "$app" SqliteType.Text query.Application "application = $app COLLATE NOCASE"
+        add "$source" SqliteType.Text query.SourceAddress
+            "source_address = $source COLLATE NOCASE"
         add "$facility" SqliteType.Integer query.Facility "facility = $facility"
-        add "$severity" SqliteType.Integer query.Severity "severity = $severity"
+
+        let severity, comparison =
+            match query.Severity with
+            | Some (Exactly value) -> Some value, "="
+            | Some (AtMost value) -> Some value, "<="
+            | Some (AtLeast value) -> Some value, ">="
+            | None -> None, "="
+
+        add "$severity" SqliteType.Integer severity $"severity {comparison} $severity"
         add "$since" SqliteType.Integer (query.Since |> Option.map unixMilliseconds)
             "received_at >= $since"
         add "$until" SqliteType.Integer (query.Until |> Option.map unixMilliseconds)

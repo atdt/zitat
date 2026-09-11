@@ -70,8 +70,13 @@ module Web =
         { textQuery with
             Hostname = value "host" context |> Option.orElse textQuery.Hostname
             Application = value "app" context |> Option.orElse textQuery.Application
+            SourceAddress =
+                value "source" context |> Option.orElse textQuery.SourceAddress
             Facility = integer "facility" context |> Option.orElse textQuery.Facility
-            Severity = integer "severity" context |> Option.orElse textQuery.Severity
+            Severity =
+                value "severity" context
+                |> Option.bind Query.numericFilter
+                |> Option.orElse textQuery.Severity
             Since = since
             Until = timestamp "until" context
             BeforeId = int64 "before" context

@@ -8,6 +8,7 @@ module Query =
         Text = None
         Hostname = None
         Application = None
+        SourceAddress = None
         Facility = None
         Severity = None
         Since = None
@@ -40,6 +41,16 @@ module Query =
         | true, parsed -> Some parsed
         | _ -> None
 
+    /// Reads a plain number or one prefixed by a comparison operator.
+    let numericFilter (value: string) =
+        let after (prefix: string) = integer (value.Substring prefix.Length)
+
+        if value.StartsWith "<=" then after "<=" |> Option.map AtMost
+        elif value.StartsWith ">=" then after ">=" |> Option.map AtLeast
+        elif value.StartsWith "<" then after "<" |> Option.map (fun n -> AtMost(n - 1))
+        elif value.StartsWith ">" then after ">" |> Option.map (fun n -> AtLeast(n + 1))
+        else integer value |> Option.map Exactly
+
     let parseText (value: string) (query: LogQuery) =
         let apply (result: LogQuery, text: string list) (token: string) =
             let parts = token.Split(':', 2)
@@ -47,10 +58,11 @@ module Query =
             match parts with
             | [| "host"; value |] -> { result with Hostname = Some value }, text
             | [| "app"; value |] -> { result with Application = Some value }, text
+            | [| "source"; value |] -> { result with SourceAddress = Some value }, text
             | [| "facility"; value |] ->
                 { result with Facility = integer value }, text
             | [| "severity"; value |] ->
-                { result with Severity = integer value }, text
+                { result with Severity = numericFilter value }, text
             | _ -> result, token :: text
 
         let parsed, remaining =
@@ -79,10 +91,22 @@ module Query =
         let equal expected actual =
             expected |> Option.forall (fun value -> actual = Some value)
 
+        let within expected actual =
+            match expected with
+            | None -> true
+            | Some filter ->
+                actual
+                |> Option.exists (fun found ->
+                    match filter with
+                    | Exactly value -> found = value
+                    | AtMost value -> found <= value
+                    | AtLeast value -> found >= value)
+
         contains query.Text entry.Message
         && same query.Hostname entry.Hostname
         && same query.Application entry.Application
+        && same query.SourceAddress (Some entry.SourceAddress)
         && equal query.Facility entry.Facility
-        && equal query.Severity entry.Severity
+        && within query.Severity entry.Severity
         && query.Since |> Option.forall (fun value -> entry.ReceivedAt >= value)
         && query.Until |> Option.forall (fun value -> entry.ReceivedAt <= value)

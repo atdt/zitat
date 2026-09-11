@@ -83,22 +83,37 @@ bind a privileged port.
 | `q` | Message text and textual filters |
 | `host` | Exact, case-insensitive hostname |
 | `app` | Exact, case-insensitive application |
+| `source` | Exact, case-insensitive sender address |
 | `facility` | Numeric syslog facility, 0 through 23 |
-| `severity` | Numeric syslog severity, 0 through 7 |
+| `severity` | Syslog severity 0 through 7, optionally compared |
 | `since` | Inclusive ISO 8601 receive timestamp |
 | `until` | Inclusive ISO 8601 receive timestamp |
 | `range` | Relative range such as `15m`, `6h`, or `7d` |
 | `before` | Return records with a lower ID for pagination |
 | `limit` | Page size from 1 through 1000; default 200 |
 
-The textual syntax recognizes `host:`, `app:`, `facility:`, and `severity:`.
-Remaining terms form one case-insensitive message substring. Double quotes keep
-spaces together.
+The textual syntax recognizes `host:`, `app:`, `source:`, `facility:`, and
+`severity:`. Remaining terms form one case-insensitive message substring.
+Double quotes keep spaces together.
+
+Severity accepts `<=`, `<`, `>=`, and `>` before the number. Severity counts
+down from 0, so `severity:<=3` reads "error and worse" and is the usual way to
+ask for the messages that matter. A bare number still matches that severity
+alone. Messages that carry no severity match neither form.
+
+`source:` filters on the address the message arrived from. It is the only way
+to isolate a device whose output is malformed enough to carry no hostname.
 
 ```sh
 curl --get http://127.0.0.1:8080/api/logs \
   --data-urlencode 'q=host:router app:dhcpd "lease granted"' \
   --data-urlencode 'range=24h'
+```
+
+```sh
+curl --get http://127.0.0.1:8080/api/logs \
+  --data-urlencode 'q=severity:<=3' \
+  --data-urlencode 'range=1h'
 ```
 
 `GET /api/tail` is a server-sent event stream and accepts the same filters.

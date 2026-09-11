@@ -3,6 +3,7 @@ const search = document.querySelector('#search');
 const range = document.querySelector('#range');
 const hostFilter = document.querySelector('#host');
 const appFilter = document.querySelector('#app');
+const sourceFilter = document.querySelector('#source');
 const facilityFilter = document.querySelector('#facility');
 const severityFilter = document.querySelector('#severity');
 const list = document.querySelector('#logs');
@@ -34,6 +35,7 @@ function parameters() {
   if (range.value) params.set('range', range.value);
   if (hostFilter.value) params.set('host', hostFilter.value);
   if (appFilter.value) params.set('app', appFilter.value);
+  if (sourceFilter.value) params.set('source', sourceFilter.value);
   if (facilityFilter.value) params.set('facility', facilityFilter.value);
   if (severityFilter.value) params.set('severity', severityFilter.value);
   return params;
@@ -46,8 +48,12 @@ function render(item, prepend = false) {
   row.querySelector('time').textContent = new Date(item.receivedAt).toLocaleString();
   const host = row.querySelector('.host');
   host.textContent = item.hostname || item.sourceAddress;
-  host.disabled = !item.hostname;
-  host.onclick = () => { hostFilter.value = item.hostname; refresh(); };
+  host.title = item.hostname ? '' : `Filter by source ${item.sourceAddress}`;
+  host.onclick = () => {
+    if (item.hostname) hostFilter.value = item.hostname;
+    else sourceFilter.value = item.sourceAddress;
+    refresh();
+  };
   const app = row.querySelector('.app');
   app.textContent = item.application
     ? `${item.application}${item.processId ? `[${item.processId}]` : ''}`
@@ -122,6 +128,7 @@ search.value = initial.get('q') || '';
 range.value = initial.get('range') ?? '1h';
 hostFilter.value = initial.get('host') || '';
 appFilter.value = initial.get('app') || '';
+sourceFilter.value = initial.get('source') || '';
 facilityFilter.value = initial.get('facility') || '';
 severityFilter.value = initial.get('severity') || '';
 load().catch(error => { notice.textContent = error.message; });

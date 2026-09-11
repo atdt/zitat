@@ -29,12 +29,19 @@ type PendingLogEntry = {
     RawMessage: string
 }
 
+/// Severity counts down from 0, so "error and worse" is AtMost 3.
+type NumericFilter =
+    | Exactly of int
+    | AtMost of int
+    | AtLeast of int
+
 type LogQuery = {
     Text: string option
     Hostname: string option
     Application: string option
+    SourceAddress: string option
     Facility: int option
-    Severity: int option
+    Severity: NumericFilter option
     Since: DateTimeOffset option
     Until: DateTimeOffset option
     BeforeId: int64 option
