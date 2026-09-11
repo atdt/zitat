@@ -73,16 +73,9 @@ type Database(path: string) =
             command.CommandText <- text
             command.ExecuteNonQuery() |> ignore
 
-        let autoVacuumMode () =
-            use command = connection.CreateCommand()
-            command.CommandText <- "PRAGMA auto_vacuum"
-            Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture)
-
         // auto_vacuum takes effect only before the database holds any page,
-        // so it must precede journal_mode. A database created without it
-        // adopts the setting only by running VACUUM once.
+        // so it must precede journal_mode.
         execute "PRAGMA auto_vacuum = INCREMENTAL;"
-        if autoVacuumMode () <> 2L then execute "VACUUM;"
 
         execute
             """
