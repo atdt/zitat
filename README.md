@@ -94,12 +94,13 @@ bind a privileged port.
 
 The textual syntax recognizes `host:`, `app:`, `source:`, `facility:`, and
 `severity:`. Remaining terms form one case-insensitive message substring.
-Double quotes keep spaces together.
+Double quotes keep spaces together. Facility and severity values accept their
+standard names or numeric values.
 
-Severity accepts `<=`, `<`, `>=`, and `>` before the number. Severity counts
-down from 0, so `severity:<=3` reads "error and worse" and is the usual way to
-ask for the messages that matter. A bare number still matches that severity
-alone. Messages that carry no severity match neither form.
+Severity accepts `<=`, `<`, `>=`, and `>` before a name or number. Severity
+counts down from emergency at 0, so `severity:<=err` reads "error and worse."
+`severity:emerg` and `severity:3` select one severity. Messages that carry no
+severity match neither form.
 
 `source:` filters on the address the message arrived from. It is the only way
 to isolate a device whose output is malformed enough to carry no hostname.
@@ -112,7 +113,7 @@ curl --get http://127.0.0.1:8080/api/logs \
 
 ```sh
 curl --get http://127.0.0.1:8080/api/logs \
-  --data-urlencode 'q=severity:<=3' \
+  --data-urlencode 'q=severity:<=err' \
   --data-urlencode 'range=1h'
 ```
 

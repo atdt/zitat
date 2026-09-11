@@ -41,15 +41,46 @@ module Query =
         | true, parsed -> Some parsed
         | _ -> None
 
-    /// Reads a plain number or one prefixed by a comparison operator.
+    let private named values (value: string) =
+        values
+        |> Map.tryFind (value.ToLowerInvariant())
+
+    let private severityValue value =
+        integer value
+        |> Option.orElseWith (fun () ->
+            named
+                (Map [
+                    "emerg", 0; "emergency", 0; "alert", 1
+                    "crit", 2; "critical", 2; "err", 3; "error", 3
+                    "warn", 4; "warning", 4; "notice", 5
+                    "info", 6; "informational", 6; "debug", 7
+                ])
+                value)
+
+    let private facilityValue value =
+        integer value
+        |> Option.orElseWith (fun () ->
+            named
+                (Map [
+                    "kern", 0; "kernel", 0; "user", 1; "mail", 2
+                    "daemon", 3; "auth", 4; "security", 4; "syslog", 5
+                    "lpr", 6; "news", 7; "uucp", 8; "clock", 9
+                    "authpriv", 10; "ftp", 11; "ntp", 12; "audit", 13
+                    "alert", 14; "clock2", 15; "local0", 16; "local1", 17
+                    "local2", 18; "local3", 19; "local4", 20; "local5", 21
+                    "local6", 22; "local7", 23
+                ])
+                value)
+
+    /// Reads a severity name or number, optionally prefixed by a comparison.
     let numericFilter (value: string) =
-        let after (prefix: string) = integer (value.Substring prefix.Length)
+        let after (prefix: string) = severityValue (value.Substring prefix.Length)
 
         if value.StartsWith "<=" then after "<=" |> Option.map AtMost
         elif value.StartsWith ">=" then after ">=" |> Option.map AtLeast
         elif value.StartsWith "<" then after "<" |> Option.map (fun n -> AtMost(n - 1))
         elif value.StartsWith ">" then after ">" |> Option.map (fun n -> AtLeast(n + 1))
-        else integer value |> Option.map Exactly
+        else severityValue value |> Option.map Exactly
 
     let parseText (value: string) (query: LogQuery) =
         let apply (result: LogQuery, text: string list) (token: string) =
@@ -60,7 +91,7 @@ module Query =
             | [| "app"; value |] -> { result with Application = Some value }, text
             | [| "source"; value |] -> { result with SourceAddress = Some value }, text
             | [| "facility"; value |] ->
-                { result with Facility = integer value }, text
+                { result with Facility = facilityValue value }, text
             | [| "severity"; value |] ->
                 { result with Severity = numericFilter value }, text
             | _ -> result, token :: text

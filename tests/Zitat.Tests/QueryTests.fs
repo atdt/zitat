@@ -27,6 +27,22 @@ module QueryTests =
         Assert.Equal(Some(Exactly 3), parse "severity:3")
 
     [<Fact>]
+    let ``severity accepts standard names`` () =
+        let parse text = (Query.parseText text Query.empty).Severity
+
+        Assert.Equal(Some(Exactly 0), parse "severity:emerg")
+        Assert.Equal(Some(Exactly 2), parse "severity:critical")
+        Assert.Equal(Some(AtMost 3), parse "severity:<=err")
+
+    [<Fact>]
+    let ``facility accepts standard names`` () =
+        let parse text = (Query.parseText text Query.empty).Facility
+
+        Assert.Equal(Some 0, parse "facility:kernel")
+        Assert.Equal(Some 10, parse "facility:authpriv")
+        Assert.Equal(Some 23, parse "facility:local7")
+
+    [<Fact>]
     let ``source filters on the sending address`` () =
         let result = Query.parseText "source:10.0.0.5 lease" Query.empty
 

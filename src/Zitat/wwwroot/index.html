@@ -8,37 +8,10 @@
 </head>
 <body>
   <header>
-    <div class="brand">Zitat <span>syslog</span></div>
     <form id="filters">
+      <div class="brand">Zitat</div>
       <input id="search" name="q" type="search"
-             placeholder="Search or use host:, app:, facility:, severity:">
-      <input id="host" name="host" class="short" placeholder="Host">
-      <input id="app" name="app" class="short" placeholder="Application">
-      <input id="source" name="source" class="short" placeholder="Source">
-      <select id="facility" name="facility" aria-label="Facility">
-        <option value="">Any facility</option>
-      </select>
-      <select id="severity" name="severity" aria-label="Severity">
-        <option value="">Any severity</option>
-        <optgroup label="At or worse than">
-          <option value="&lt;=1">Alert</option>
-          <option value="&lt;=2">Critical</option>
-          <option value="&lt;=3">Error</option>
-          <option value="&lt;=4">Warning</option>
-          <option value="&lt;=5">Notice</option>
-          <option value="&lt;=6">Info</option>
-        </optgroup>
-        <optgroup label="Exactly">
-          <option value="0">Emergency</option>
-          <option value="1">Alert</option>
-          <option value="2">Critical</option>
-          <option value="3">Error</option>
-          <option value="4">Warning</option>
-          <option value="5">Notice</option>
-          <option value="6">Info</option>
-          <option value="7">Debug</option>
-        </optgroup>
-      </select>
+             placeholder="Search logs; host:, app:, source:, facility:, severity:">
       <select id="range" name="range" aria-label="Time range">
         <option value="15m">Last 15 minutes</option>
         <option value="1h" selected>Last hour</option>

@@ -1,11 +1,6 @@
 const form = document.querySelector('#filters');
 const search = document.querySelector('#search');
 const range = document.querySelector('#range');
-const hostFilter = document.querySelector('#host');
-const appFilter = document.querySelector('#app');
-const sourceFilter = document.querySelector('#source');
-const facilityFilter = document.querySelector('#facility');
-const severityFilter = document.querySelector('#severity');
 const list = document.querySelector('#logs');
 const empty = document.querySelector('#empty');
 const older = document.querySelector('#older');
@@ -22,23 +17,16 @@ const facilityNames = [
   'local0', 'local1', 'local2', 'local3', 'local4', 'local5', 'local6', 'local7'
 ];
 
-facilityNames.forEach((name, number) => {
-  const option = document.createElement('option');
-  option.value = number;
-  option.textContent = `${number} · ${name}`;
-  facilityFilter.append(option);
-});
-
 function parameters() {
   const params = new URLSearchParams();
   if (search.value) params.set('q', search.value);
   if (range.value) params.set('range', range.value);
-  if (hostFilter.value) params.set('host', hostFilter.value);
-  if (appFilter.value) params.set('app', appFilter.value);
-  if (sourceFilter.value) params.set('source', sourceFilter.value);
-  if (facilityFilter.value) params.set('facility', facilityFilter.value);
-  if (severityFilter.value) params.set('severity', severityFilter.value);
   return params;
+}
+
+function appendFilter(name, value) {
+  search.value = `${search.value.trim()} ${name}:${value}`.trim();
+  refresh();
 }
 
 function render(item, prepend = false) {
@@ -50,25 +38,26 @@ function render(item, prepend = false) {
   host.textContent = item.hostname || item.sourceAddress;
   host.title = item.hostname ? '' : `Filter by source ${item.sourceAddress}`;
   host.onclick = () => {
-    if (item.hostname) hostFilter.value = item.hostname;
-    else sourceFilter.value = item.sourceAddress;
-    refresh();
+    if (item.hostname) appendFilter('host', item.hostname);
+    else appendFilter('source', item.sourceAddress);
   };
   const app = row.querySelector('.app');
   app.textContent = item.application
     ? `${item.application}${item.processId ? `[${item.processId}]` : ''}`
     : '—';
   app.disabled = !item.application;
-  app.onclick = () => { appFilter.value = item.application; refresh(); };
+  app.onclick = () => appendFilter('app', item.application);
   const facility = row.querySelector('.facility');
-  facility.textContent = Number.isInteger(item.facility) ? item.facility : '—';
+  facility.textContent = Number.isInteger(item.facility)
+    ? facilityNames[item.facility]
+    : '—';
   facility.disabled = !Number.isInteger(item.facility);
   facility.title = Number.isInteger(item.facility) ? facilityNames[item.facility] : '';
-  facility.onclick = () => { facilityFilter.value = item.facility; refresh(); };
+  facility.onclick = () => appendFilter('facility', facilityNames[item.facility]);
   const severity = row.querySelector('.severity');
   severity.textContent = severityNames[item.severity] || '—';
   severity.disabled = !Number.isInteger(item.severity);
-  severity.onclick = () => { severityFilter.value = item.severity; refresh(); };
+  severity.onclick = () => appendFilter('severity', severityNames[item.severity]);
   row.querySelector('.message').textContent = item.message;
   row.title = `source=${item.sourceAddress}\nraw=${item.rawMessage}`;
   prepend ? list.prepend(row) : list.append(row);
@@ -126,11 +115,6 @@ liveButton.onclick = () => {
 const initial = new URLSearchParams(location.search);
 search.value = initial.get('q') || '';
 range.value = initial.get('range') ?? '1h';
-hostFilter.value = initial.get('host') || '';
-appFilter.value = initial.get('app') || '';
-sourceFilter.value = initial.get('source') || '';
-facilityFilter.value = initial.get('facility') || '';
-severityFilter.value = initial.get('severity') || '';
 load().catch(error => { notice.textContent = error.message; });
 showLosses();
 connect();
