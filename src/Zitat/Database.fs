@@ -67,14 +67,32 @@ type Database(path: string) =
         Directory.CreateDirectory directory |> ignore
 
         use connection = openConnection ()
-        use command = connection.CreateCommand()
-        command.CommandText <-
+
+        let execute text =
+            use command = connection.CreateCommand()
+            command.CommandText <- text
+            command.ExecuteNonQuery() |> ignore
+
+        let autoVacuumMode () =
+            use command = connection.CreateCommand()
+            command.CommandText <- "PRAGMA auto_vacuum"
+            Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture)
+
+        // auto_vacuum takes effect only before the database holds any page,
+        // so it must precede journal_mode. A database created without it
+        // adopts the setting only by running VACUUM once.
+        execute "PRAGMA auto_vacuum = INCREMENTAL;"
+        if autoVacuumMode () <> 2L then execute "VACUUM;"
+
+        execute
             """
             PRAGMA journal_mode = WAL;
             PRAGMA synchronous = NORMAL;
             PRAGMA busy_timeout = 5000;
-            PRAGMA auto_vacuum = INCREMENTAL;
+            """
 
+        execute
+            """
             CREATE TABLE IF NOT EXISTS logs (
                 id INTEGER PRIMARY KEY,
                 received_at INTEGER NOT NULL,
@@ -100,7 +118,6 @@ type Database(path: string) =
             CREATE INDEX IF NOT EXISTS logs_severity
                 ON logs(severity, received_at);
             """
-        command.ExecuteNonQuery() |> ignore
 
     member _.Insert(item: PendingLogEntry) =
         use connection = openConnection ()
@@ -202,7 +219,9 @@ type Database(path: string) =
     member _.Compact() =
         use connection = openConnection ()
         use command = connection.CreateCommand()
-        command.CommandText <- "PRAGMA wal_checkpoint(TRUNCATE); PRAGMA incremental_vacuum;"
+        // The vacuum frees pages through the write-ahead log, so the
+        // checkpoint that shrinks the files has to follow it.
+        command.CommandText <- "PRAGMA incremental_vacuum; PRAGMA wal_checkpoint(TRUNCATE);"
         command.ExecuteNonQuery() |> ignore
 
     member _.SizeBytes = databaseFiles () |> List.sum
