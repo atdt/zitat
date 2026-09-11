@@ -9,9 +9,13 @@ provides a searchable web log stream and HTTP API.
 .NET 10 SDK is required for development.
 
 ```sh
-dotnet test Zitat.slnx
-dotnet run --project src/Zitat/Zitat.fsproj
+make test
+make run
 ```
+
+`make build`, `make publish`, and `make clean` provide the other common
+repository workflows. The Makefile delegates compilation and packaging to the
+.NET project files.
 
 The web interface uses the address printed by ASP.NET Core. The syslog
 listeners use UDP and TCP port 5514 by default.
