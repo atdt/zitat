@@ -48,6 +48,24 @@ module DatabaseTests =
             Assert.Equal(first.Id, results.Head.Id))
 
     [<Fact>]
+    let ``search orders and pages by receive time`` () =
+        withDatabase (fun database ->
+            let now = DateTimeOffset.UtcNow
+            let newer = database.Insert(item now "newer" None)
+            database.Insert(item (now.AddSeconds -1) "older" None) |> ignore
+
+            let results = database.Search { Query.empty with Limit = 1 }
+            Assert.Equal(newer.Id, results.Head.Id)
+
+            let next =
+                database.Search
+                    { Query.empty with
+                        BeforeId = Some newer.Id
+                        Limit = 1 }
+
+            Assert.Equal("older", next.Head.Message))
+
+    [<Fact>]
     let ``receive-time retention deletes old logs`` () =
         withDatabase (fun database ->
             let now = DateTimeOffset.UtcNow

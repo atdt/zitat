@@ -157,7 +157,13 @@ type Database(path: string) =
             "received_at >= $since"
         add "$until" SqliteType.Integer (query.Until |> Option.map unixMilliseconds)
             "received_at <= $until"
-        add "$before" SqliteType.Integer query.BeforeId "id < $before"
+        let beforeClause =
+            "(received_at < (SELECT received_at FROM logs WHERE id = $before) "
+            + "OR (received_at = "
+            + "(SELECT received_at FROM logs WHERE id = $before) "
+            + "AND id < $before))"
+
+        add "$before" SqliteType.Integer query.BeforeId beforeClause
 
         let where =
             if clauses.Count = 0 then ""
@@ -168,7 +174,7 @@ type Database(path: string) =
             + "process_id, facility, severity, message, source_address, "
             + "raw_message FROM logs"
             + where
-            + " ORDER BY id DESC LIMIT $limit"
+            + " ORDER BY received_at DESC, id DESC LIMIT $limit"
         command.Parameters.AddWithValue("$limit", Math.Clamp(query.Limit, 1, 1000))
         |> ignore
 
@@ -189,7 +195,7 @@ type Database(path: string) =
         use command = connection.CreateCommand()
         command.CommandText <-
             "DELETE FROM logs WHERE id IN "
-            + "(SELECT id FROM logs ORDER BY id LIMIT $limit)"
+            + "(SELECT id FROM logs ORDER BY received_at, id LIMIT $limit)"
         command.Parameters.AddWithValue("$limit", limit) |> ignore
         command.ExecuteNonQuery()
 
