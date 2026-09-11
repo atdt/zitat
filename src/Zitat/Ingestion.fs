@@ -111,7 +111,9 @@ module private SocketHelpers =
 
     let source (endpoint: EndPoint | null) =
         match Option.ofObj endpoint with
-        | Some (:? IPEndPoint as ip) -> ip.Address.MapToIPv4().ToString()
+        | Some (:? IPEndPoint as ip) when ip.Address.IsIPv4MappedToIPv6 ->
+            ip.Address.MapToIPv4().ToString()
+        | Some (:? IPEndPoint as ip) -> ip.Address.ToString()
         | Some value -> value.ToString() |> Option.ofObj |> Option.defaultValue "unknown"
         | None -> "unknown"
 
@@ -120,13 +122,23 @@ type UdpIngestion(options: ZitatOptions, sink: IngestSink, logger: ILogger<UdpIn
 
     override _.ExecuteAsync(stoppingToken) =
         task {
-            use socket = SocketHelpers.listenerSocket SocketType.Dgram ProtocolType.Udp options.UdpPort
+            use socket =
+                SocketHelpers.listenerSocket
+                    SocketType.Dgram
+                    ProtocolType.Udp
+                    options.UdpPort
             logger.LogInformation("Listening for UDP syslog on port {Port}", options.UdpPort)
             let buffer = Array.zeroCreate<byte> options.MaxMessageBytes
             let mutable endpoint: EndPoint = IPEndPoint(IPAddress.IPv6Any, 0)
 
             while not stoppingToken.IsCancellationRequested do
-                let! result = socket.ReceiveFromAsync(buffer, SocketFlags.None, endpoint, stoppingToken)
+                let! result =
+                    socket.ReceiveFromAsync(
+                        buffer,
+                        SocketFlags.None,
+                        endpoint,
+                        stoppingToken
+                    )
                 let raw = Encoding.UTF8.GetString(buffer, 0, result.ReceivedBytes)
                 sink.Submit(SocketHelpers.source result.RemoteEndPoint, raw)
         }
@@ -193,7 +205,11 @@ type TcpIngestion(options: ZitatOptions, sink: IngestSink, logger: ILogger<TcpIn
 
     override _.ExecuteAsync(stoppingToken) =
         task {
-            use listener = SocketHelpers.listenerSocket SocketType.Stream ProtocolType.Tcp options.TcpPort
+            use listener =
+                SocketHelpers.listenerSocket
+                    SocketType.Stream
+                    ProtocolType.Tcp
+                    options.TcpPort
             listener.Listen(128)
             logger.LogInformation("Listening for TCP syslog on port {Port}", options.TcpPort)
 

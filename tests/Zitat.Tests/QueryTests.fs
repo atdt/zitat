@@ -16,3 +16,21 @@ module QueryTests =
         Assert.Equal(Some 5, result.Severity)
         Assert.Equal(Some "lease granted", result.Text)
 
+    [<Fact>]
+    let ``live matching handles an absent field`` () =
+        let entry = {
+            Id = 1L
+            ReceivedAt = System.DateTimeOffset.UtcNow
+            SentAt = None
+            Hostname = None
+            Application = None
+            ProcessId = None
+            Facility = None
+            Severity = None
+            Message = "message"
+            SourceAddress = "source"
+            RawMessage = "message"
+        }
+
+        let query = { Query.empty with Facility = Some 1 }
+        Assert.False(Query.matches query entry)

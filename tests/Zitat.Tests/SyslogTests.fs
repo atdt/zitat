@@ -20,6 +20,17 @@ module SyslogTests =
         Assert.Equal("message", result.Message)
 
     [<Fact>]
+    let ``RFC 5424 structured data is skipped without losing the message`` () =
+        let raw =
+            "<165>1 2003-10-11T22:14:15.003Z host app - ID47 "
+            + "[example@1 key=\"a\\]b\"] payload"
+        let result = Syslog.parse received "100.64.0.1" raw
+
+        Assert.Equal("payload", result.Message)
+        Assert.Equal(Some 20, result.Facility)
+        Assert.Equal(Some 5, result.Severity)
+
+    [<Fact>]
     let ``RFC 3164 fields are parsed`` () =
         let result =
             Syslog.parse received "100.64.0.2" "<13>Sep 11 07:10:00 router dhcpd[42]: lease granted"
@@ -39,3 +50,9 @@ module SyslogTests =
         Assert.Equal("not syslog", result.RawMessage)
         Assert.Equal(None, result.Severity)
 
+    [<Fact>]
+    let ``future legacy timestamp is assigned to the previous year`` () =
+        let january = DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)
+        let result = Syslog.parse january "source" "<13>Dec 31 23:59:00 host app: old"
+
+        Assert.Equal(2025, result.SentAt.Value.Year)

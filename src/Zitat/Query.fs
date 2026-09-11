@@ -61,3 +61,28 @@ module Query =
         let text = if String.IsNullOrWhiteSpace joined then None else Some joined
 
         { parsed with Text = text }
+
+    let matches (query: LogQuery) (entry: LogEntry) =
+        let same (expected: string option) (actual: string option) =
+            match expected with
+            | None -> true
+            | Some value ->
+                actual
+                |> Option.exists (fun found ->
+                    String.Equals(value, found, StringComparison.OrdinalIgnoreCase))
+
+        let contains (expected: string option) (actual: string) =
+            expected
+            |> Option.forall (fun value ->
+                actual.Contains(value, StringComparison.OrdinalIgnoreCase))
+
+        let equal expected actual =
+            expected |> Option.forall (fun value -> actual = Some value)
+
+        contains query.Text entry.Message
+        && same query.Hostname entry.Hostname
+        && same query.Application entry.Application
+        && equal query.Facility entry.Facility
+        && equal query.Severity entry.Severity
+        && query.Since |> Option.forall (fun value -> entry.ReceivedAt >= value)
+        && query.Until |> Option.forall (fun value -> entry.ReceivedAt <= value)

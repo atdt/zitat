@@ -34,7 +34,10 @@ module Configuration =
         let days = integer config "Zitat:RetentionDays" 14
 
         {
-            DatabasePath = config["Zitat:DatabasePath"] |> Option.ofObj |> Option.defaultValue "zitat.db"
+            DatabasePath =
+                config["Zitat:DatabasePath"]
+                |> Option.ofObj
+                |> Option.defaultValue "zitat.db"
             UdpPort = integer config "Zitat:UdpPort" 5514
             TcpPort = integer config "Zitat:TcpPort" 5514
             Retention = TimeSpan.FromDays(float days)
@@ -43,4 +46,3 @@ module Configuration =
             FloodMessagesPerSecond = number config "Zitat:FloodMessagesPerSecond" 500.0
             FloodBurst = number config "Zitat:FloodBurst" 1_000.0
         }
-

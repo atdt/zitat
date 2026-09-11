@@ -11,7 +11,8 @@ type Database(path: string) =
             DataSource = path,
             Mode = SqliteOpenMode.ReadWriteCreate,
             Cache = SqliteCacheMode.Shared,
-            Pooling = true
+            Pooling = true,
+            DefaultTimeout = 5
         ).ToString()
 
     let openConnection () =
