@@ -1,0 +1,23 @@
+[Unit]
+Description=Zitat syslog collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+DynamicUser=yes
+StateDirectory=zitat
+WorkingDirectory=/var/lib/zitat
+ExecStart=/opt/zitat/zitat
+Environment=ASPNETCORE_URLS=http://127.0.0.1:8080
+Environment=Zitat__DatabasePath=/var/lib/zitat/zitat.db
+EnvironmentFile=-/etc/zitat.env
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target
