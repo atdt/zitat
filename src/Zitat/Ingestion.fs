@@ -61,7 +61,10 @@ type IngestSink(options: ZitatOptions, metrics: IngestMetrics) =
 
     member _.Reader = channel.Reader
 
-    member _.Submit(source: string, raw: string) =
+    member this.Submit(source: string, raw: string) =
+        if not (String.IsNullOrWhiteSpace raw) then this.Accept(source, raw)
+
+    member private _.Accept(source: string, raw: string) =
         metrics.IncrementReceived()
         let bucket =
             buckets.GetOrAdd(
@@ -155,19 +158,36 @@ type private FrameDecoder(maxBytes: int) =
             buffer.RemoveRange(0, index + 1)
             Some frame
 
-    let octetFrame () =
+    // RFC 6587 octet counting: decimal length, one space, then a frame that
+    // always opens with the priority. Anything else is newline framing, even
+    // when it starts with a digit.
+    let octetLength () =
         let space = buffer.IndexOf(byte ' ')
-        if space <= 0 || space > 10 then None
+        let counted =
+            space > 0
+            && space <= 10
+            && buffer.Count > space + 1
+            && buffer[space + 1] = byte '<'
+
+        if not counted then
+            None
         else
             let prefix = Encoding.ASCII.GetString(buffer.GetRange(0, space).ToArray())
             match Int32.TryParse prefix with
-            | true, length when length >= 0 && length <= maxBytes ->
-                if buffer.Count < space + 1 + length then None
-                else
-                    let frame = buffer.GetRange(space + 1, length).ToArray()
-                    buffer.RemoveRange(0, space + 1 + length)
-                    Some frame
-            | _ -> newlineFrame ()
+            | true, length when length >= 0 && length <= maxBytes -> Some(space, length)
+            | _ -> None
+
+    let octetFrame (space, length) =
+        if buffer.Count < space + 1 + length then None
+        else
+            let frame = buffer.GetRange(space + 1, length).ToArray()
+            buffer.RemoveRange(0, space + 1 + length)
+            Some frame
+
+    let nextFrame () =
+        match octetLength () with
+        | Some counted -> octetFrame counted
+        | None -> newlineFrame ()
 
     member _.Feed(bytes: byte array, count: int) =
         for index in 0 .. count - 1 do buffer.Add(bytes[index])
@@ -176,11 +196,7 @@ type private FrameDecoder(maxBytes: int) =
         let frames = ResizeArray<string>()
         let mutable reading = true
         while reading do
-            let frame =
-                if buffer.Count > 0 && Char.IsDigit(char buffer[0]) then octetFrame ()
-                else newlineFrame ()
-
-            match frame with
+            match nextFrame () with
             | Some value -> frames.Add(Encoding.UTF8.GetString value)
             | None -> reading <- false
         List.ofSeq frames
