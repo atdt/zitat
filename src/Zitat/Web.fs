@@ -1,6 +1,7 @@
 namespace Zitat
 
 open System
+open System.Globalization
 open System.Text.Json
 open System.Threading.Tasks
 open Falco
@@ -32,10 +33,15 @@ module Web =
             | true, parsed -> Some parsed
             | _ -> None)
 
+    // A timestamp without an offset means UTC, matching stored receive times.
     let private timestamp name context =
         value name context
         |> Option.bind (fun text ->
-            match DateTimeOffset.TryParse text with
+            match DateTimeOffset.TryParse(
+                text,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal ||| DateTimeStyles.AdjustToUniversal
+            ) with
             | true, parsed -> Some parsed
             | _ -> None)
 
@@ -99,6 +105,9 @@ module Web =
             context.Response.ContentType <- "text/event-stream"
             context.Response.Headers.CacheControl <- "no-cache"
             context.Response.Headers.Connection <- "keep-alive"
+            // Send the headers now so the client reports an open stream
+            // before the first matching message arrives.
+            do! context.Response.Body.FlushAsync(context.RequestAborted)
             let subscription = live.Subscribe()
 
             try
