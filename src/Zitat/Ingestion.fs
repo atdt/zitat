@@ -53,7 +53,7 @@ type private Bucket(rate: float, capacity: float) =
 
 type IngestSink(options: ZitatOptions, metrics: IngestMetrics) =
     let channelOptions = BoundedChannelOptions(10_000)
-    do channelOptions.FullMode <- BoundedChannelFullMode.DropWrite
+    do channelOptions.FullMode <- BoundedChannelFullMode.Wait
     do channelOptions.SingleReader <- true
 
     let channel = Channel.CreateBounded<PendingLogEntry>(channelOptions)

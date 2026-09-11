@@ -8,6 +8,7 @@
     <Compile Include="SyslogTests.fs" />
     <Compile Include="QueryTests.fs" />
     <Compile Include="DatabaseTests.fs" />
+    <Compile Include="IngestionTests.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
@@ -18,4 +19,3 @@
     <ProjectReference Include="../../src/Zitat/Zitat.fsproj" />
   </ItemGroup>
 </Project>
-

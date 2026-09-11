@@ -12,6 +12,22 @@
     <form id="filters">
       <input id="search" name="q" type="search"
              placeholder="Search or use host:, app:, facility:, severity:">
+      <input id="host" name="host" class="short" placeholder="Host">
+      <input id="app" name="app" class="short" placeholder="Application">
+      <select id="facility" name="facility" aria-label="Facility">
+        <option value="">Any facility</option>
+      </select>
+      <select id="severity" name="severity" aria-label="Severity">
+        <option value="">Any severity</option>
+        <option value="0">Emergency</option>
+        <option value="1">Alert</option>
+        <option value="2">Critical</option>
+        <option value="3">Error</option>
+        <option value="4">Warning</option>
+        <option value="5">Notice</option>
+        <option value="6">Info</option>
+        <option value="7">Debug</option>
+      </select>
       <select id="range" name="range" aria-label="Time range">
         <option value="15m">Last 15 minutes</option>
         <option value="1h" selected>Last hour</option>
@@ -35,7 +51,8 @@
       <time></time>
       <button class="host field"></button>
       <button class="app field"></button>
-      <span class="severity"></span>
+      <button class="facility field"></button>
+      <button class="severity field"></button>
       <span class="message"></span>
     </li>
   </template>

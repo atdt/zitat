@@ -1,6 +1,10 @@
 const form = document.querySelector('#filters');
 const search = document.querySelector('#search');
 const range = document.querySelector('#range');
+const hostFilter = document.querySelector('#host');
+const appFilter = document.querySelector('#app');
+const facilityFilter = document.querySelector('#facility');
+const severityFilter = document.querySelector('#severity');
 const list = document.querySelector('#logs');
 const empty = document.querySelector('#empty');
 const older = document.querySelector('#older');
@@ -11,20 +15,28 @@ let cursor = null;
 let source = null;
 
 const severityNames = ['emerg', 'alert', 'crit', 'err', 'warning', 'notice', 'info', 'debug'];
+const facilityNames = [
+  'kernel', 'user', 'mail', 'daemon', 'auth', 'syslog', 'lpr', 'news',
+  'uucp', 'clock', 'authpriv', 'ftp', 'ntp', 'audit', 'alert', 'clock2',
+  'local0', 'local1', 'local2', 'local3', 'local4', 'local5', 'local6', 'local7'
+];
+
+facilityNames.forEach((name, number) => {
+  const option = document.createElement('option');
+  option.value = number;
+  option.textContent = `${number} · ${name}`;
+  facilityFilter.append(option);
+});
 
 function parameters() {
   const params = new URLSearchParams();
   if (search.value) params.set('q', search.value);
   if (range.value) params.set('range', range.value);
+  if (hostFilter.value) params.set('host', hostFilter.value);
+  if (appFilter.value) params.set('app', appFilter.value);
+  if (facilityFilter.value) params.set('facility', facilityFilter.value);
+  if (severityFilter.value) params.set('severity', severityFilter.value);
   return params;
-}
-
-function addFilter(name, value) {
-  const token = `${name}:${value}`;
-  const tokens = search.value.split(/\s+/).filter(Boolean)
-    .filter(item => !item.startsWith(`${name}:`));
-  search.value = [token, ...tokens].join(' ');
-  refresh();
 }
 
 function render(item, prepend = false) {
@@ -34,13 +46,25 @@ function render(item, prepend = false) {
   row.querySelector('time').textContent = new Date(item.receivedAt).toLocaleString();
   const host = row.querySelector('.host');
   host.textContent = item.hostname || item.sourceAddress;
-  host.onclick = () => addFilter('host', item.hostname || item.sourceAddress);
+  host.disabled = !item.hostname;
+  host.onclick = () => { hostFilter.value = item.hostname; refresh(); };
   const app = row.querySelector('.app');
-  app.textContent = item.application || '—';
+  app.textContent = item.application
+    ? `${item.application}${item.processId ? `[${item.processId}]` : ''}`
+    : '—';
   app.disabled = !item.application;
-  app.onclick = () => addFilter('app', item.application);
-  row.querySelector('.severity').textContent = severityNames[item.severity] || '—';
+  app.onclick = () => { appFilter.value = item.application; refresh(); };
+  const facility = row.querySelector('.facility');
+  facility.textContent = Number.isInteger(item.facility) ? item.facility : '—';
+  facility.disabled = !Number.isInteger(item.facility);
+  facility.title = Number.isInteger(item.facility) ? facilityNames[item.facility] : '';
+  facility.onclick = () => { facilityFilter.value = item.facility; refresh(); };
+  const severity = row.querySelector('.severity');
+  severity.textContent = severityNames[item.severity] || '—';
+  severity.disabled = !Number.isInteger(item.severity);
+  severity.onclick = () => { severityFilter.value = item.severity; refresh(); };
   row.querySelector('.message').textContent = item.message;
+  row.title = `source=${item.sourceAddress}\nraw=${item.rawMessage}`;
   prepend ? list.prepend(row) : list.append(row);
 }
 
@@ -57,6 +81,16 @@ async function load(append = false) {
   empty.style.display = list.children.length ? 'none' : 'block';
 }
 
+async function showLosses() {
+  const response = await fetch('/api/status');
+  if (!response.ok) return;
+  const status = await response.json();
+  const dropped = status.floodDropped + status.queueDropped + status.storageFailed;
+  notice.textContent = dropped
+    ? `${dropped} messages lost since service start; inspect /api/status.`
+    : '';
+}
+
 function connect() {
   if (source) source.close();
   source = new EventSource(`/api/tail?${parameters()}`);
@@ -65,7 +99,7 @@ function connect() {
     empty.style.display = 'none';
   };
   source.onerror = () => { notice.textContent = 'Live connection interrupted; reconnecting.'; };
-  source.onopen = () => { notice.textContent = ''; };
+  source.onopen = () => { showLosses(); };
   liveButton.textContent = 'Pause';
 }
 
@@ -86,5 +120,10 @@ liveButton.onclick = () => {
 const initial = new URLSearchParams(location.search);
 search.value = initial.get('q') || '';
 range.value = initial.get('range') ?? '1h';
+hostFilter.value = initial.get('host') || '';
+appFilter.value = initial.get('app') || '';
+facilityFilter.value = initial.get('facility') || '';
+severityFilter.value = initial.get('severity') || '';
 load().catch(error => { notice.textContent = error.message; });
+showLosses();
 connect();
