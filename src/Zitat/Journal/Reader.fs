@@ -137,7 +137,7 @@ type JournalSet(root: string, log: string -> unit) =
                     // Ignore corrupt files.
                     | CorruptJournalException(path, reason) -> log $"skipping %s{path}: %s{reason}")
 
-    member _.Use(action: JournalFile list -> 'A) =
+    member _.Use(action: JournalFile list -> 'a) =
         lock gate (fun () -> action (files.Values |> Seq.sortBy _.Path |> List.ofSeq))
 
     interface IDisposable with

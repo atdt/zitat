@@ -52,51 +52,58 @@ module Web =
                 | :? OverflowException -> None
             | _ -> None
 
-    let private validated name parser (errors: ResizeArray<string>) context =
+    // Parses one query parameter, returning the parsed value (if any)
+    // alongside the error it produced (if any).
+    let private validated name parser context : 'a option * string list =
         match value name context with
-        | None -> None
+        | None -> None, []
         | Some text ->
             match parser text with
-            | Some parsed -> Some parsed
-            | None ->
-                errors.Add($"invalid {name}")
-                None
+            | Some parsed -> Some parsed, []
+            | None -> None, [ $"invalid {name}" ]
 
-    let private finish (errors: ResizeArray<string>) value =
-        if errors.Count > 0 then
-            Error(String.concat "; " errors)
-        else
-            Ok value
+    let private finish (errors: string list) value =
+        match errors with
+        | [] -> Ok value
+        | _ -> Error(String.concat "; " errors)
 
     let query (context: HttpContext) =
-        let errors = ResizeArray<string>()
-
-        let textQuery =
+        let textQuery, textErrors =
             match value "q" context with
-            | None -> Query.empty
+            | None -> Query.empty, []
             | Some text ->
                 match Query.parseText text with
-                | Ok parsed -> parsed
-                | Error error ->
-                    errors.Add error
-                    Query.empty
+                | Ok parsed -> parsed, []
+                | Error error -> Query.empty, [ error ]
 
-        let range = validated "range" relativeTime errors context
-        let since = validated "since" timestamp errors context
-        let until = validated "until" timestamp errors context
+        let range, rangeErrors = validated "range" relativeTime context
+        let since, sinceErrors = validated "since" timestamp context
+        let until, untilErrors = validated "until" timestamp context
 
-        let facility = validated "facility" Query.facilityValue errors context
+        let facility, facilityErrors = validated "facility" Query.facilityValue context
 
-        let severity = validated "severity" Query.severityFilter errors context
+        let severity, severityErrors = validated "severity" Query.severityFilter context
 
-        let before = validated "before" Cursor.validate errors context
+        let before, beforeErrors = validated "before" Cursor.validate context
 
-        let limit =
+        let limit, limitErrors =
             validated
                 "limit"
                 (fun text -> Query.integer text |> Option.filter (fun n -> n >= 1 && n <= 1000))
-                errors
                 context
+
+        let errors =
+            List.concat
+                [
+                    textErrors
+                    rangeErrors
+                    sinceErrors
+                    untilErrors
+                    facilityErrors
+                    severityErrors
+                    beforeErrors
+                    limitErrors
+                ]
 
         finish
             errors
@@ -159,21 +166,19 @@ module Web =
             context
 
     let private resume (context: HttpContext) =
-        let errors = ResizeArray<string>()
-
-        let after = validated "after" Cursor.validate errors context
-        let fromTime = validated "from" timestamp errors context
+        let after, afterErrors = validated "after" Cursor.validate context
+        let fromTime, fromErrors = validated "from" timestamp context
         let header = context.Request.Headers["Last-Event-ID"].ToString()
 
-        let lastEventId =
+        let lastEventId, lastEventErrors =
             if String.IsNullOrWhiteSpace header then
-                None
+                None, []
             else
                 match Cursor.validate header with
-                | Some _ as valid -> valid
-                | None ->
-                    errors.Add("invalid Last-Event-ID")
-                    None
+                | Some _ as valid -> valid, []
+                | None -> None, [ "invalid Last-Event-ID" ]
+
+        let errors = List.concat [ afterErrors; fromErrors; lastEventErrors ]
 
         finish errors (lastEventId |> Option.orElse after, fromTime)
 
