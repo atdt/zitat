@@ -22,7 +22,7 @@ workflows. The web interface uses the address printed by ASP.NET Core.
 To read a journal tree other than the host's own:
 
 ```sh
-Zitat__JournalDirectory=./testdata/journal make run
+Zitat__JournalDirectory=/path/to/journal make run
 ```
 
 ## Source style
@@ -140,15 +140,7 @@ documentation requires of readers.
 
 ## Tests
 
-`make test` runs the unit tests. Tests that need real journal files look for a
-tree at `testdata/journal` and skip when it is absent — a corpus is a copy of a
-live host's logs, too large and too personal to keep in the repository. To run
-them, copy one in:
-
-```sh
-rsync -a --rsync-path='sudo rsync' COLLECTOR:/var/log/journal/ testdata/journal/
-```
-
-Those tests re-derive the hash of every field of every sampled entry and assert
-it resolves to the object the entry references, which exercises SipHash, the
-hash tables, compact offsets and decompression together.
+`make test` runs the test suite. Tests that need real journal files skip when no
+local corpus is available. They re-derive the hash of every field of every
+sampled entry and assert it resolves to the object the entry references, which
+exercises SipHash, the hash tables, compact offsets and decompression together.
