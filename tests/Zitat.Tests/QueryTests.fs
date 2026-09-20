@@ -6,7 +6,7 @@ open Zitat
 
 module QueryTests =
     let private parse text =
-        match Query.parseText text Query.empty with
+        match Query.parseText text with
         | Ok query -> query
         | Error error -> failwith error
 
@@ -74,7 +74,7 @@ module QueryTests =
     [<InlineData("severity:unknown")>]
     [<InlineData("severity:8")>]
     let ``invalid named filters are rejected`` text =
-        Assert.True(Query.parseText text Query.empty |> Result.isError)
+        Assert.True(Query.parseText text |> Result.isError)
 
     [<Fact>]
     let ``an empty query matches everything`` () =
@@ -98,9 +98,6 @@ module QueryTests =
                 entry
         )
 
-    /// Exact-value filters go through the journal's hash index, which matches
-    /// bytes. In-memory filtering has to agree with that or the live stream
-    /// would show entries a search cannot find.
     [<Fact>]
     let ``exact filters are case sensitive`` () =
         Assert.True(

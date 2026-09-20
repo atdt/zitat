@@ -106,8 +106,7 @@ module Query =
                     ])
                 value)
 
-    /// Reads a severity name or number, optionally prefixed by a comparison.
-    let numericFilter (value: string) =
+    let severityFilter (value: string) =
         let after (prefix: string) =
             severityValue (value.Substring prefix.Length)
 
@@ -122,7 +121,7 @@ module Query =
         else
             severityValue value |> Option.map Exactly
 
-    let parseText (value: string) (query: LogQuery) =
+    let parseText (value: string) =
         let apply (state: Result<LogQuery * string list, string>) (token: string) =
             state
             |> Result.bind (fun (result, text) ->
@@ -137,13 +136,13 @@ module Query =
                     | Some number -> Ok({ result with Facility = Some number }, text)
                     | None -> Error $"invalid facility: {value}"
                 | [| "severity"; value |] ->
-                    match numericFilter value with
+                    match severityFilter value with
                     | Some filter -> Ok({ result with Severity = Some filter }, text)
                     | None -> Error $"invalid severity: {value}"
                 | _ -> Ok(result, token :: text))
 
         tokens value
-        |> List.fold apply (Ok(query, []))
+        |> List.fold apply (Ok(empty, []))
         |> Result.map (fun (parsed, remaining) ->
             let joined = remaining |> List.rev |> String.concat " "
 
@@ -155,9 +154,7 @@ module Query =
 
             { parsed with Text = text })
 
-    /// Tests an entry against a query in memory, for filtering the live
-    /// stream. Exact-value filters are case-sensitive here for the same reason
-    /// they are in the index: that is what the stored bytes mean.
+    /// Keep exact-value matching case-sensitive to agree with the journal index.
     let matches (query: LogQuery) (entry: LogEntry) =
         let same expected actual =
             expected |> Option.forall (fun value -> actual = Some value)

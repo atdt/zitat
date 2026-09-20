@@ -74,7 +74,7 @@ module Web =
             match value "q" context with
             | None -> Query.empty
             | Some text ->
-                match Query.parseText text Query.empty with
+                match Query.parseText text with
                 | Ok parsed -> parsed
                 | Error error ->
                     errors.Add error
@@ -86,7 +86,7 @@ module Web =
 
         let facility = validated "facility" Query.facilityValue errors context
 
-        let severity = validated "severity" Query.numericFilter errors context
+        let severity = validated "severity" Query.severityFilter errors context
 
         let before =
             validated "before" (fun text -> Cursor.decode text |> Option.map (fun _ -> text)) errors context
