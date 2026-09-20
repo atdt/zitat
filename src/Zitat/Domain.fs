@@ -2,9 +2,8 @@ namespace Zitat
 
 open System
 
-/// One journal entry, flattened into the fields the interface shows. `Fields`
-/// keeps the complete entry, including the trusted `_`-prefixed metadata that
-/// a syslog transport would have discarded.
+/// A journal entry projected for the API. Fields retains all journal fields,
+/// including underscore-prefixed metadata.
 type LogEntry =
     {
         Cursor: string
@@ -27,9 +26,6 @@ type NumericFilter =
     | AtMost of int
     | AtLeast of int
 
-/// Filters that name an exact field value are served by the journal's hash
-/// index and are therefore case-sensitive, matching journalctl. Text is a
-/// case-insensitive substring of MESSAGE and is applied per candidate.
 type LogQuery =
     {
         Text: string option

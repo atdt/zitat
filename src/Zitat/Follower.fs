@@ -8,11 +8,8 @@ open Microsoft.Extensions.Hosting
 open Microsoft.Extensions.Logging
 open Zitat.Journal
 
-/// Tails the journal directory and publishes new entries to subscribers.
-///
-/// Unlike the in-process channel this replaces, the position is a journal
-/// cursor, so a reconnecting client resumes exactly where it stopped instead
-/// of having to re-run its historical query.
+/// Reads entries appended to journal files and publishes them to the live hub.
+/// The cursor starts at the newest existing entry and advances after publication.
 type JournalFollower
     (options: ZitatOptions, set: JournalSet, reader: JournalReader, live: LiveHub, logger: ILogger<JournalFollower>) =
     inherit BackgroundService()
@@ -37,21 +34,21 @@ type JournalFollower
             watcher.Error.Add(fun error -> logger.LogWarning(error.GetException(), "journal watch failed"))
             watcher.EnableRaisingEvents <- true
 
+            let startedAt = DateTimeOffset.UtcNow
+
             // Start at the newest entry so subscribers see what arrives from
             // now on, not the whole retained history.
-            let mutable cursor =
+            let mutable checkpointCursor =
                 reader.Search { Query.empty with Limit = 1 }
                 |> List.tryHead
                 |> Option.map _.Cursor
-
-            let mutable floor = DateTimeOffset.UtcNow
 
             while not token.IsCancellationRequested do
                 try
                     set.Refresh()
 
                     let query =
-                        match cursor with
+                        match checkpointCursor with
                         | Some position ->
                             { Query.empty with
                                 Before = Some position
@@ -59,14 +56,13 @@ type JournalFollower
                             }
                         | None ->
                             { Query.empty with
-                                Since = Some floor
+                                Since = Some startedAt
                                 Limit = 1000
                             }
 
                     for entry in reader.Forward query do
                         live.Publish entry
-                        cursor <- Some entry.Cursor
-                        floor <- entry.Realtime
+                        checkpointCursor <- Some entry.Cursor
                 with
                 | :? OperationCanceledException -> ()
                 | error -> logger.LogError(error, "journal tail failed")
