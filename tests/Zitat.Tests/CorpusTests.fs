@@ -108,7 +108,6 @@ module CorpusTests =
 
             Assert.True(seen.Count > 500))
 
-    /// The index must agree with the naive interpretation of the same filter.
     [<CorpusFact>]
     let ``the indexed host filter agrees with filtering a scan`` () =
         withReader (fun reader ->
@@ -221,3 +220,32 @@ module CorpusTests =
                     Limit = 300
                 }
             |> List.iter (fun entry -> Assert.InRange(entry.Realtime, since, until)))
+
+    [<CorpusFact>]
+    let ``since excludes an entry one tick before the bound`` () =
+        withReader (fun reader ->
+            let newest = reader.Search({ Query.empty with Limit = 1 }) |> List.head
+
+            let later =
+                reader.Search
+                    { Query.empty with
+                        Since = Some(newest.Realtime.AddTicks 1L)
+                        Limit = 1
+                    }
+
+            Assert.Empty later)
+
+    [<CorpusFact>]
+    let ``maximum cursor timestamp does not wrap the search bound`` () =
+        withReader (fun reader ->
+            let expected = reader.Search { Query.empty with Limit = 10 }
+            let cursor = Cursor.encode (Array.zeroCreate 16) 0UL UInt64.MaxValue
+
+            let actual =
+                reader.Search
+                    { Query.empty with
+                        Before = Some cursor
+                        Limit = 10
+                    }
+
+            Assert.Equal<string list>(expected |> List.map _.Cursor, actual |> List.map _.Cursor))

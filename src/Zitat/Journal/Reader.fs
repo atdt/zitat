@@ -39,9 +39,14 @@ module private Clock =
     let toInstant (microseconds: uint64) =
         DateTimeOffset.UnixEpoch.AddTicks(int64 microseconds * 10L)
 
-    let ofInstant (instant: DateTimeOffset) =
+    // Round bounds inward to exclude entries outside the requested range.
+    let upperBound (instant: DateTimeOffset) =
         let ticks = (instant - DateTimeOffset.UnixEpoch).Ticks
         if ticks <= 0L then 0UL else uint64 ticks / 10UL
+
+    let lowerBound (instant: DateTimeOffset) =
+        let ticks = (instant - DateTimeOffset.UnixEpoch).Ticks
+        if ticks <= 0L then 0UL else uint64 ((ticks + 9L) / 10L)
 
 /// An opaque position in the merged stream: the writing file's sequence
 /// number identity, its sequence number, and the entry's timestamp.
@@ -89,9 +94,8 @@ module Source =
 ///
 /// A file systemd is still writing grows in place, so refreshing remaps any
 /// file whose length has changed and picks up files that rotation has created.
-/// Unmapping a file while another thread is reading it is a segmentation
-/// fault rather than an exception, so refreshing and reading are serialised.
-/// Both are short: a refresh stats the directory, a query runs in milliseconds.
+/// Unmapping a file while another thread is reading it can cause a
+/// segmentation fault, so refreshing and reading are serialised.
 [<Sealed>]
 type JournalSet(root: string, log: string -> unit) =
     let files = Dictionary<string, JournalFile>()
@@ -237,7 +241,11 @@ type JournalReader(set: JournalSet) =
 
             match direction with
             | Newest ->
-                let position = chain.LowerBound(file.EntryRealtime, instant + 1UL)
+                let position =
+                    if instant = UInt64.MaxValue then
+                        chain.Count
+                    else
+                        chain.LowerBound(file.EntryRealtime, instant + 1UL)
 
                 if position = 0L then
                     None
@@ -290,11 +298,7 @@ type JournalReader(set: JournalSet) =
             Fields = fields
         }
 
-    /// Walks every candidate file at once, always taking the entry that sorts
-    /// next in `direction`, so the result is one ordered stream across senders.
-    ///
-    /// Entries are ordered by realtime, sequence number, and sequence ID.
-    /// The sequence ID breaks ties across writers and is stored in the cursor.
+    /// The sequence ID breaks realtime and sequence-number ties across writers.
     member private _.Collect(query: LogQuery, direction: Direction) =
         set.Use(fun openFiles ->
             let limit = Math.Clamp(query.Limit, 1, 1000)
@@ -304,8 +308,8 @@ type JournalReader(set: JournalSet) =
                 cursor
                 |> Option.map (fun (id, seqnum, realtime) -> Cursor.order id seqnum realtime)
 
-            let sinceUsec = query.Since |> Option.map Clock.ofInstant
-            let untilUsec = query.Until |> Option.map Clock.ofInstant
+            let sinceUsec = query.Since |> Option.map Clock.lowerBound
+            let untilUsec = query.Until |> Option.map Clock.upperBound
 
             // A cursor tightens the bound that iteration starts from: paging back
             // resumes below its timestamp, tailing resumes above it.
@@ -413,7 +417,7 @@ type JournalReader(set: JournalSet) =
     /// Matching entries, newest first.
     member this.Search(query: LogQuery) = this.Collect(query, Newest)
 
-    /// Matching entries after the given cursor, oldest first. Used to tail.
+    /// Matching entries, oldest first. A cursor resumes after that entry.
     member this.Forward(query: LogQuery) = this.Collect(query, Oldest)
 
     member _.Status() =
