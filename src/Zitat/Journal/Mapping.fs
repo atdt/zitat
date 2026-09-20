@@ -16,7 +16,9 @@ open Microsoft.FSharp.NativeInterop
 /// to verify offsets before dereferencing them, because a truncated or
 /// corrupted file is expected rather than exceptional.
 [<Sealed>]
-type Mapping private (path: string, mapped: MemoryMappedFile, view: MemoryMappedViewAccessor, length: int64) =
+type Mapping
+    private (path: string, mapped: MemoryMappedFile, view: MemoryMappedViewAccessor, length: int64)
+    =
     let handle = view.SafeMemoryMappedViewHandle
 
     let start =
@@ -33,7 +35,13 @@ type Mapping private (path: string, mapped: MemoryMappedFile, view: MemoryMapped
             raise (CorruptJournal(path, $"file is %d{length} bytes, shorter than a journal header"))
 
         let mapped =
-            MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, 0L, MemoryMappedFileAccess.Read)
+            MemoryMappedFile.CreateFromFile(
+                path,
+                FileMode.Open,
+                null,
+                0L,
+                MemoryMappedFileAccess.Read
+            )
 
         let view = mapped.CreateViewAccessor(0L, length, MemoryMappedFileAccess.Read)
         new Mapping(path, mapped, view, length)

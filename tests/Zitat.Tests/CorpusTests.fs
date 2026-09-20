@@ -67,7 +67,12 @@ module CorpusTests =
                             for item in 0L .. file.EntryItemCount entry - 1L do
                                 let dataOffset = file.EntryItem(entry, item)
                                 let payload = file.DataPayload dataOffset
-                                Assert.Equal(ValueSome dataOffset, file.FindData(ReadOnlySpan<byte> payload))
+
+                                Assert.Equal(
+                                    ValueSome dataOffset,
+                                    file.FindData(ReadOnlySpan<byte> payload)
+                                )
+
                                 count <- count + 1
 
                     count)
@@ -113,7 +118,9 @@ module CorpusTests =
         withReader (fun reader ->
             let page = reader.Search { Query.empty with Limit = 3000 }
 
-            match page |> List.choose _.Hostname |> List.countBy id |> List.sortByDescending snd with
+            match
+                page |> List.choose _.Hostname |> List.countBy id |> List.sortByDescending snd
+            with
             | [] -> ()
             | (host, _) :: _ ->
                 let scanned =
@@ -128,7 +135,10 @@ module CorpusTests =
                             Limit = 25
                         }
 
-                Assert.Equal<string list>(scanned |> List.map _.Cursor, indexed |> List.map _.Cursor))
+                Assert.Equal<string list>(
+                    scanned |> List.map _.Cursor,
+                    indexed |> List.map _.Cursor
+                ))
 
     [<CorpusFact>]
     let ``severity filters admit only the severities asked for`` () =
@@ -154,7 +164,8 @@ module CorpusTests =
                     }
 
             hits
-            |> List.iter (fun entry -> Assert.Contains("systemd", entry.Message, StringComparison.OrdinalIgnoreCase)))
+            |> List.iter (fun entry ->
+                Assert.Contains("systemd", entry.Message, StringComparison.OrdinalIgnoreCase)))
 
     [<CorpusFact>]
     let ``tailing forward retraces the page that walked backward`` () =

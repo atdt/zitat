@@ -89,10 +89,18 @@ module Web =
         let severity = validated "severity" Query.severityFilter errors context
 
         let before =
-            validated "before" (fun text -> Cursor.decode text |> Option.map (fun _ -> text)) errors context
+            validated
+                "before"
+                (fun text -> Cursor.decode text |> Option.map (fun _ -> text))
+                errors
+                context
 
         let limit =
-            validated "limit" (fun text -> integer text |> Option.filter (fun n -> n >= 1 && n <= 1000)) errors context
+            validated
+                "limit"
+                (fun text -> integer text |> Option.filter (fun n -> n >= 1 && n <= 1000))
+                errors
+                context
 
         if errors.Count > 0 then
             Error(String.concat "; " errors)
@@ -160,7 +168,11 @@ module Web =
         let errors = ResizeArray<string>()
 
         let after =
-            validated "after" (fun text -> Cursor.decode text |> Option.map (fun _ -> text)) errors context
+            validated
+                "after"
+                (fun text -> Cursor.decode text |> Option.map (fun _ -> text))
+                errors
+                context
 
         let fromTime = validated "from" timestamp errors context
         let header = context.Request.Headers["Last-Event-ID"].ToString()
@@ -193,7 +205,10 @@ module Web =
                 let startedAt = fromTime |> Option.defaultValue DateTimeOffset.UtcNow
 
                 use linked =
-                    CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, stopping)
+                    CancellationTokenSource.CreateLinkedTokenSource(
+                        context.RequestAborted,
+                        stopping
+                    )
 
                 let token = linked.Token
                 let subscription = live.Subscribe()
@@ -218,7 +233,13 @@ module Web =
 
                                 if Query.matches filter entry then
                                     let json = JsonSerializer.Serialize(entry, jsonOptions)
-                                    do! context.Response.WriteAsync($"id: {entry.Cursor}\ndata: {json}\n\n", token)
+
+                                    do!
+                                        context.Response.WriteAsync(
+                                            $"id: {entry.Cursor}\ndata: {json}\n\n",
+                                            token
+                                        )
+
                                     do! context.Response.Body.FlushAsync(token)
 
                             more <- entries.Length = scan.Limit

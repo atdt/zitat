@@ -171,7 +171,8 @@ module Query =
                     | AtLeast value -> found >= value)
 
         query.Text
-        |> Option.forall (fun needle -> entry.Message.Contains(needle, StringComparison.OrdinalIgnoreCase))
+        |> Option.forall (fun needle ->
+            entry.Message.Contains(needle, StringComparison.OrdinalIgnoreCase))
         && same query.Hostname entry.Hostname
         && same query.Application entry.Application
         && same query.Unit entry.Unit

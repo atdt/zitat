@@ -13,7 +13,10 @@ module SipHashTests =
         let key = Array.init 16 byte
         let input = Array.init 15 byte
 
-        Assert.Equal(0xa129ca6149be45e5UL, SipHash.hash (ReadOnlySpan<byte> key) (ReadOnlySpan<byte> input))
+        Assert.Equal(
+            0xa129ca6149be45e5UL,
+            SipHash.hash (ReadOnlySpan<byte> key) (ReadOnlySpan<byte> input)
+        )
 
     [<Fact>]
     let ``length is part of the hash`` () =

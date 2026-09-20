@@ -18,7 +18,8 @@ type private Segment =
 /// are appended, so a chain covering n entries has O(log n) segments and the
 /// segment table is cheap to build and keep.
 [<Sealed>]
-type EntryArrayChain(mapping: Mapping, compact: bool, head: int64, first: int64 voption, total: int64) =
+type EntryArrayChain
+    (mapping: Mapping, compact: bool, head: int64, first: int64 voption, total: int64) =
 
     let width = if compact then 4L else 8L
     let inlineCount = if first.IsSome then 1L else 0L
@@ -35,7 +36,12 @@ type EntryArrayChain(mapping: Mapping, compact: bool, head: int64, first: int64 
                 let capacity = (size - Format.EntryArray.Items) / width
 
                 if capacity <= 0L then
-                    raise (CorruptJournal(mapping.Path, $"entry array at %d{arrayOffset} holds no items"))
+                    raise (
+                        CorruptJournal(
+                            mapping.Path,
+                            $"entry array at %d{arrayOffset} holds no items"
+                        )
+                    )
 
                 let count = min capacity remaining
 
@@ -48,7 +54,9 @@ type EntryArrayChain(mapping: Mapping, compact: bool, head: int64, first: int64 
 
                 index <- index + count
                 remaining <- remaining - count
-                arrayOffset <- int64 (mapping.ReadUInt64(arrayOffset + Format.EntryArray.NextOffset))
+
+                arrayOffset <-
+                    int64 (mapping.ReadUInt64(arrayOffset + Format.EntryArray.NextOffset))
 
             // If the header's count outruns the chain the file is mid-write
             // or truncated; serving what is actually linked is the documented
@@ -82,12 +90,16 @@ type EntryArrayChain(mapping: Mapping, compact: bool, head: int64, first: int64 
                         high <- mid - 1
 
                 if segment < 0 then
-                    raise (CorruptJournal(mapping.Path, $"entry index %d{index} is outside the chain"))
+                    raise (
+                        CorruptJournal(mapping.Path, $"entry index %d{index} is outside the chain")
+                    )
 
                 let slot = found[segment]
 
                 if index - slot.Start >= slot.Count then
-                    raise (CorruptJournal(mapping.Path, $"entry index %d{index} is outside the chain"))
+                    raise (
+                        CorruptJournal(mapping.Path, $"entry index %d{index} is outside the chain")
+                    )
 
                 let position = slot.Items + (index - slot.Start) * width
 
@@ -183,7 +195,12 @@ type JournalFile private (mapping: Mapping) =
                 )
 
             if not (incompatible.HasFlag IncompatibleFlags.KeyedHash) then
-                raise (UnsupportedJournal(path, "file predates keyed hashing and would need the Jenkins lookup3 hash"))
+                raise (
+                    UnsupportedJournal(
+                        path,
+                        "file predates keyed hashing and would need the Jenkins lookup3 hash"
+                    )
+                )
 
             let headerSize = int64 (mapping.ReadUInt64 88L)
 
@@ -220,12 +237,19 @@ type JournalFile private (mapping: Mapping) =
 
     member private _.CheckObject(offset: int64, expected: byte) =
         if offset < headerSize || offset % Format.Alignment <> 0L then
-            raise (CorruptJournal(path, $"object offset %d{offset} is unaligned or inside the header"))
+            raise (
+                CorruptJournal(path, $"object offset %d{offset} is unaligned or inside the header")
+            )
 
         let actual = mapping.ReadByte offset
 
         if actual <> expected then
-            raise (CorruptJournal(path, $"expected object type %d{expected} at %d{offset}, found %d{actual}"))
+            raise (
+                CorruptJournal(
+                    path,
+                    $"expected object type %d{expected} at %d{offset}, found %d{actual}"
+                )
+            )
 
     member private _.ObjectSize(offset: int64) = int64 (mapping.ReadUInt64(offset + 8L))
 
@@ -235,7 +259,8 @@ type JournalFile private (mapping: Mapping) =
         | 1uy -> Xz
         | 2uy -> Lz4
         | 4uy -> Zstd
-        | other -> raise (CorruptJournal(path, $"object at %d{offset} has compression bits %d{other}"))
+        | other ->
+            raise (CorruptJournal(path, $"object at %d{offset} has compression bits %d{other}"))
 
     /// The `FIELD=value` bytes of a DATA object, decompressed if needed.
     member this.DataPayload(offset: int64) : byte[] =
@@ -249,7 +274,10 @@ type JournalFile private (mapping: Mapping) =
         match this.Compression offset with
         | Uncompressed -> mapping.ToArray(offset + dataPayloadOffset, length)
         | Zstd -> Zstd.decompress (mapping.Span(offset + dataPayloadOffset, length))
-        | other -> raise (UnsupportedJournal(path, $"data object at %d{offset} uses %A{other} compression"))
+        | other ->
+            raise (
+                UnsupportedJournal(path, $"data object at %d{offset} uses %A{other} compression")
+            )
 
     // ---- Entries -------------------------------------------------------
 
@@ -331,13 +359,20 @@ type JournalFile private (mapping: Mapping) =
         this.CheckObject(entryOffset, Format.ObjectType.Entry)
         let count = this.EntryItemCount entryOffset
 
-        Array.init (int count) (fun index -> this.DataPayload(this.EntryItem(entryOffset, int64 index)))
+        Array.init (int count) (fun index ->
+            this.DataPayload(this.EntryItem(entryOffset, int64 index)))
 
     // ---- Indexes -------------------------------------------------------
 
     /// The chain of every entry in the file, oldest first.
     member this.GlobalChain() =
-        EntryArrayChain(mapping, compact, int64 (mapping.ReadUInt64 176L), ValueNone, this.EntryCount)
+        EntryArrayChain(
+            mapping,
+            compact,
+            int64 (mapping.ReadUInt64 176L),
+            ValueNone,
+            this.EntryCount
+        )
 
     /// The chain of entries referencing one DATA object, oldest first. The
     /// first entry is stored inline in the DATA object itself.
@@ -376,7 +411,9 @@ type JournalFile private (mapping: Mapping) =
                 guard <- guard + 1
 
                 if guard > 10_000 then
-                    raise (CorruptJournal(path, $"hash chain in bucket %d{bucket} does not terminate"))
+                    raise (
+                        CorruptJournal(path, $"hash chain in bucket %d{bucket} does not terminate")
+                    )
 
                 if mapping.ReadUInt64(candidate + Format.Data.Hash) = hash then
                     // The stored hash matches; confirm on the bytes themselves,

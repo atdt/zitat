@@ -9,7 +9,8 @@ open Microsoft.Extensions.Logging
 open Zitat.Journal
 
 /// Refreshes the journal file set and notifies live subscribers after each scan.
-type JournalFollower(options: ZitatOptions, set: JournalSet, live: LiveHub, logger: ILogger<JournalFollower>) =
+type JournalFollower
+    (options: ZitatOptions, set: JournalSet, live: LiveHub, logger: ILogger<JournalFollower>) =
     inherit BackgroundService()
 
     let changed = new SemaphoreSlim(0, 1)
@@ -26,12 +27,21 @@ type JournalFollower(options: ZitatOptions, set: JournalSet, live: LiveHub, logg
     override _.ExecuteAsync(token: CancellationToken) =
         task {
             use watcher =
-                new FileSystemWatcher(options.JournalDirectory, "*.journal", IncludeSubdirectories = true)
+                new FileSystemWatcher(
+                    options.JournalDirectory,
+                    "*.journal",
+                    IncludeSubdirectories = true
+                )
 
-            watcher.NotifyFilter <- NotifyFilters.Size ||| NotifyFilters.LastWrite ||| NotifyFilters.FileName
+            watcher.NotifyFilter <-
+                NotifyFilters.Size ||| NotifyFilters.LastWrite ||| NotifyFilters.FileName
+
             watcher.Changed.Add(fun _ -> signal ())
             watcher.Created.Add(fun _ -> signal ())
-            watcher.Error.Add(fun error -> logger.LogWarning(error.GetException(), "journal watch failed"))
+
+            watcher.Error.Add(fun error ->
+                logger.LogWarning(error.GetException(), "journal watch failed"))
+
             watcher.EnableRaisingEvents <- true
 
             while not token.IsCancellationRequested do

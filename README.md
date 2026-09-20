@@ -25,6 +25,13 @@ To read a journal tree other than the host's own:
 Zitat__JournalDirectory=./testdata/journal make run
 ```
 
+## Source style
+
+`make format-check` uses the 100-column Fantomas setting in `.editorconfig`.
+When a match branch converts a value and then checks it, name the converted
+value before the check. Keep separate operations on separate lines even when
+the formatter permits one line.
+
 ## Configuration
 
 Settings come from `appsettings.json`, environment variables, or ASP.NET Core

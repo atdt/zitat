@@ -68,7 +68,10 @@ module Cursor =
             if buffer.Length <> 32 then
                 None
             else
-                Some(buffer[0..15], BitConverter.ToUInt64(buffer, 16), BitConverter.ToUInt64(buffer, 24))
+                let seqnumId = buffer[0..15]
+                let seqnum = BitConverter.ToUInt64(buffer, 16)
+                let realtime = BitConverter.ToUInt64(buffer, 24)
+                Some(seqnumId, seqnum, realtime)
         with :? FormatException ->
             None
 
@@ -150,7 +153,9 @@ type JournalReader(set: JournalSet) =
         match Array.IndexOf(payload, byte '=') with
         | -1 -> Encoding.UTF8.GetString payload, ""
         | at ->
-            Encoding.UTF8.GetString(payload, 0, at), Encoding.UTF8.GetString(payload, at + 1, payload.Length - at - 1)
+            let name = Encoding.UTF8.GetString(payload, 0, at)
+            let value = Encoding.UTF8.GetString(payload, at + 1, payload.Length - at - 1)
+            name, value
 
     // An indexed value absent from this file rules out the file.
     let termsFor (file: JournalFile) (query: LogQuery) =
@@ -247,7 +252,9 @@ type JournalReader(set: JournalSet) =
         | None -> true
         | Some needle ->
             match file.EntryField(offset, messagePrefix) with
-            | ValueSome value -> Encoding.UTF8.GetString(value).Contains(needle, StringComparison.OrdinalIgnoreCase)
+            | ValueSome value ->
+                let message = Encoding.UTF8.GetString value
+                message.Contains(needle, StringComparison.OrdinalIgnoreCase)
             | ValueNone -> false
 
     let materialize (file: JournalFile) offset =
@@ -331,7 +338,8 @@ type JournalReader(set: JournalSet) =
                     termsFor file query
                     |> Option.bind (fun terms ->
                         boundFor file direction startBound
-                        |> Option.map (fun bound -> file, FileScan(file, terms, direction, bound))))
+                        |> Option.map (fun bound ->
+                            file, FileScan(file, terms, direction, bound))))
                 |> List.toArray
 
             let heads = candidates |> Array.map (fun (_, scan) -> scan.Next())

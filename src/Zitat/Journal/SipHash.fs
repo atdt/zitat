@@ -12,7 +12,12 @@ module SipHash =
     let inline private rotl (value: uint64) (bits: int) =
         (value <<< bits) ||| (value >>> (64 - bits))
 
-    let inline private round (v0: byref<uint64>) (v1: byref<uint64>) (v2: byref<uint64>) (v3: byref<uint64>) =
+    let inline private round
+        (v0: byref<uint64>)
+        (v1: byref<uint64>)
+        (v2: byref<uint64>)
+        (v3: byref<uint64>)
+        =
         v0 <- v0 + v1
         v1 <- rotl v1 13
         v1 <- v1 ^^^ v0
