@@ -21,12 +21,7 @@ module Web =
         let text = context.Request.Query[name].ToString()
         if String.IsNullOrWhiteSpace text then None else Some text
 
-    let private integer (text: string) =
-        match Int32.TryParse text with
-        | true, parsed -> Some parsed
-        | _ -> None
-
-    // A timestamp without an offset means UTC, matching journal timestamps.
+    // A timestamp without an offset means UTC.
     let private timestamp (text: string) =
         match
             DateTimeOffset.TryParse(
@@ -67,6 +62,12 @@ module Web =
                 errors.Add($"invalid {name}")
                 None
 
+    let private finish (errors: ResizeArray<string>) value =
+        if errors.Count > 0 then
+            Error(String.concat "; " errors)
+        else
+            Ok value
+
     let query (context: HttpContext) =
         let errors = ResizeArray<string>()
 
@@ -88,37 +89,30 @@ module Web =
 
         let severity = validated "severity" Query.severityFilter errors context
 
-        let before =
-            validated
-                "before"
-                (fun text -> Cursor.decode text |> Option.map (fun _ -> text))
-                errors
-                context
+        let before = validated "before" Cursor.validate errors context
 
         let limit =
             validated
                 "limit"
-                (fun text -> integer text |> Option.filter (fun n -> n >= 1 && n <= 1000))
+                (fun text -> Query.integer text |> Option.filter (fun n -> n >= 1 && n <= 1000))
                 errors
                 context
 
-        if errors.Count > 0 then
-            Error(String.concat "; " errors)
-        else
-            Ok
-                { textQuery with
-                    Hostname = value "host" context |> Option.orElse textQuery.Hostname
-                    Application = value "app" context |> Option.orElse textQuery.Application
-                    Unit = value "unit" context |> Option.orElse textQuery.Unit
-                    Source = value "source" context |> Option.orElse textQuery.Source
-                    BootId = value "boot" context |> Option.orElse textQuery.BootId
-                    Facility = facility |> Option.orElse textQuery.Facility
-                    Severity = severity |> Option.orElse textQuery.Severity
-                    Since = range |> Option.orElse since
-                    Until = until
-                    Before = before
-                    Limit = limit |> Option.defaultValue 200
-                }
+        finish
+            errors
+            { textQuery with
+                Hostname = value "host" context |> Option.orElse textQuery.Hostname
+                Application = value "app" context |> Option.orElse textQuery.Application
+                Unit = value "unit" context |> Option.orElse textQuery.Unit
+                Source = value "source" context |> Option.orElse textQuery.Source
+                BootId = value "boot" context |> Option.orElse textQuery.BootId
+                Facility = facility |> Option.orElse textQuery.Facility
+                Severity = severity |> Option.orElse textQuery.Severity
+                Since = range |> Option.orElse since
+                Until = until
+                Before = before
+                Limit = limit |> Option.defaultValue 200
+            }
 
     let private badRequest message (context: HttpContext) =
         context.Response.StatusCode <- StatusCodes.Status400BadRequest
@@ -167,29 +161,21 @@ module Web =
     let private resume (context: HttpContext) =
         let errors = ResizeArray<string>()
 
-        let after =
-            validated
-                "after"
-                (fun text -> Cursor.decode text |> Option.map (fun _ -> text))
-                errors
-                context
-
+        let after = validated "after" Cursor.validate errors context
         let fromTime = validated "from" timestamp errors context
         let header = context.Request.Headers["Last-Event-ID"].ToString()
 
         let lastEventId =
             if String.IsNullOrWhiteSpace header then
                 None
-            elif Cursor.decode header |> Option.isSome then
-                Some header
             else
-                errors.Add("invalid Last-Event-ID")
-                None
+                match Cursor.validate header with
+                | Some _ as valid -> valid
+                | None ->
+                    errors.Add("invalid Last-Event-ID")
+                    None
 
-        if errors.Count > 0 then
-            Error(String.concat "; " errors)
-        else
-            Ok(lastEventId |> Option.orElse after, fromTime)
+        finish errors (lastEventId |> Option.orElse after, fromTime)
 
     let private stream
         (stopping: CancellationToken)
@@ -227,6 +213,7 @@ module Web =
                                 }
 
                             let entries = reader.Forward scan
+                            let mutable wrote = false
 
                             for entry in entries do
                                 checkpoint <- Some entry.Cursor
@@ -240,7 +227,11 @@ module Web =
                                             token
                                         )
 
-                                    do! context.Response.Body.FlushAsync(token)
+                                    wrote <- true
+
+                            // Flush once per batch.
+                            if wrote then
+                                do! context.Response.Body.FlushAsync(token)
 
                             more <- entries.Length = scan.Limit
                     }

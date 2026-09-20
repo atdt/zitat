@@ -2,7 +2,7 @@ namespace Zitat
 
 open System
 
-/// Fields preserves every journal field, including underscore-prefixed metadata
+/// Fields keeps every journal field, including underscore-prefixed metadata
 /// that has no dedicated API property.
 type LogEntry =
     {

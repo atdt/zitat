@@ -39,7 +39,7 @@ module Query =
         flush ()
         List.ofSeq output
 
-    let private integer (value: string) =
+    let integer (value: string) =
         match Int32.TryParse value with
         | true, parsed -> Some parsed
         | _ -> None
@@ -96,15 +96,14 @@ module Query =
                 "local7", 23
             ]
 
-    let private severityValue value =
+    let private numberOrName table lo hi value =
         integer value
-        |> Option.filter (fun number -> number >= 0 && number <= 7)
-        |> Option.orElseWith (fun () -> named severityNames value)
+        |> Option.filter (fun number -> number >= lo && number <= hi)
+        |> Option.orElseWith (fun () -> named table value)
 
-    let facilityValue value =
-        integer value
-        |> Option.filter (fun number -> number >= 0 && number <= 23)
-        |> Option.orElseWith (fun () -> named facilityNames value)
+    let private severityValue value = numberOrName severityNames 0 7 value
+
+    let facilityValue value = numberOrName facilityNames 0 23 value
 
     let severityFilter (value: string) =
         let after (prefix: string) =
@@ -154,7 +153,7 @@ module Query =
 
             { parsed with Text = text })
 
-    // Match fields case-sensitively to agree with indexed search.
+    // Match fields case-sensitively.
     let matches (query: LogQuery) (entry: LogEntry) =
         let same expected actual =
             expected |> Option.forall (fun value -> actual = Some value)

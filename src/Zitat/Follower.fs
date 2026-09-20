@@ -13,7 +13,7 @@ type JournalFollower
     inherit BackgroundService()
 
     let changed = new SemaphoreSlim(0, 1)
-    // Polling recovers changes missed by FileSystemWatcher.
+    // Polling finds changes missed by FileSystemWatcher.
     let pollInterval = TimeSpan.FromSeconds 1.
 
     let signal () =

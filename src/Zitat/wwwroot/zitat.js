@@ -124,24 +124,30 @@ function render(
 }
 
 async function load(append = false) {
-  const signal = controller.signal;
-  const params = parameters();
-  if (append && cursor) params.set("before", cursor);
-  const response = await fetch(`/api/logs?${params}`, { signal });
-  if (!response.ok) {
-    throw new Error(`Search failed: HTTP ${response.status}`);
+  try {
+    const params = parameters();
+    if (append && cursor) params.set("before", cursor);
+    const response = await fetch(`/api/logs?${params}`, {
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Search failed: HTTP ${response.status}`);
+    }
+    const page = await response.json();
+    if (!append) list.replaceChildren();
+    for (const item of page.items) render(item);
+    cursor = page.nextBefore;
+    if (!append) {
+      liveAfter = page.liveAfter;
+      liveSince = page.liveSince;
+    }
+    older.hidden = !cursor || page.items.length === 0;
+    empty.hidden = list.children.length > 0;
+    return page;
+  } catch (error) {
+    if (error.name === "AbortError") return null;
+    throw error;
   }
-  const page = await response.json();
-  if (!append) list.replaceChildren();
-  for (const item of page.items) render(item);
-  cursor = page.nextBefore;
-  if (!append) {
-    liveAfter = page.liveAfter;
-    liveSince = page.liveSince;
-  }
-  older.hidden = !cursor || page.items.length === 0;
-  empty.hidden = list.children.length > 0;
-  return page;
 }
 
 async function showSummary() {
@@ -187,10 +193,10 @@ async function refresh() {
   const params = parameters();
   history.replaceState(null, "", params.size ? `?${params}` : "/");
   try {
-    await load();
-    connect();
+    const page = await load();
+    if (page) connect();
   } catch (error) {
-    if (error.name !== "AbortError") notice.textContent = error.message;
+    notice.textContent = error.message;
   }
 }
 
@@ -200,7 +206,7 @@ form.onsubmit = (event) => {
 };
 older.onclick = () =>
   load(true).catch((error) => {
-    if (error.name !== "AbortError") notice.textContent = error.message;
+    notice.textContent = error.message;
   });
 liveButton.onclick = () => {
   if (stream) {

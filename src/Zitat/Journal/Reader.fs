@@ -74,6 +74,9 @@ module Cursor =
         with :? FormatException ->
             None
 
+    let validate (text: string) =
+        decode text |> Option.map (fun _ -> text)
+
 module Source =
     // The @ suffix marks a rotated file and is not part of the source name.
     let ofPath (path: string) =
@@ -107,10 +110,11 @@ type JournalSet(root: string, log: string -> unit) =
         lock gate (fun () ->
             let onDisk =
                 if Directory.Exists root then
-                    Directory.EnumerateFiles(root, "*.journal", SearchOption.AllDirectories)
-                    |> Set.ofSeq
+                    HashSet(
+                        Directory.EnumerateFiles(root, "*.journal", SearchOption.AllDirectories)
+                    )
                 else
-                    Set.empty
+                    HashSet()
 
             for path in files.Keys |> Seq.toArray do
                 if not (onDisk.Contains path) then
@@ -130,7 +134,7 @@ type JournalSet(root: string, log: string -> unit) =
                     with
                     // Unsupported formats must be reported to the caller.
                     | UnsupportedJournal _ -> reraise ()
-                    // One corrupt file must not hide entries in other files.
+                    // Ignore corrupt files.
                     | CorruptJournal(path, reason) -> log $"skipping %s{path}: %s{reason}")
 
     member _.Use(action: JournalFile list -> 'a) =
@@ -202,21 +206,21 @@ type JournalReader(set: JournalSet) =
 
         let facility = query.Facility |> Option.map (fun value -> $"%d{value}")
 
-        [
-            single Fields.Hostname query.Hostname
-            single Fields.Identifier query.Application
-            single Fields.Unit query.Unit
-            single Fields.BootId query.BootId
-            single Fields.Facility facility
-            severities
-        ]
-        |> List.fold
-            (fun state resolved ->
-                match state, resolved with
-                | Some found, Some(Some term) -> Some(term :: found)
-                | Some found, Some None -> Some found
-                | _ -> None)
-            (Some [])
+        let resolved =
+            [
+                single Fields.Hostname query.Hostname
+                single Fields.Identifier query.Application
+                single Fields.Unit query.Unit
+                single Fields.BootId query.BootId
+                single Fields.Facility facility
+                severities
+            ]
+
+        // A None entry means the field has no matching data object.
+        if resolved |> List.exists Option.isNone then
+            None
+        else
+            resolved |> List.choose id |> List.choose id |> Some
 
     // None excludes the file. Some ValueNone includes it without a start bound.
     let boundFor (file: JournalFile) (direction: Direction) (limit: uint64 option) =
@@ -258,9 +262,17 @@ type JournalReader(set: JournalSet) =
     let materialize (file: JournalFile) offset =
         let fields = file.EntryFields offset |> Array.map decodePair |> List.ofArray
 
+        // Ignore later values for a repeated key.
+        let byKey = Dictionary<string, string>()
+
+        for key, value in fields do
+            if not (byKey.ContainsKey key) then
+                byKey[key] <- value
+
         let lookup name =
-            fields
-            |> List.tryPick (fun (key, value) -> if key = name then Some value else None)
+            match byKey.TryGetValue name with
+            | true, value -> Some value
+            | _ -> None
 
         let number name =
             lookup name
@@ -408,6 +420,11 @@ type JournalReader(set: JournalSet) =
             let realtimes =
                 files |> List.collect (fun file -> [ file.HeadRealtime; file.TailRealtime ])
 
+            let bound picking =
+                match realtimes with
+                | [] -> None
+                | values -> Some(Clock.toInstant (picking values))
+
             {|
                 directory = set.Root
                 files = files.Length
@@ -418,14 +435,6 @@ type JournalReader(set: JournalSet) =
                     |> List.map (fun file -> Source.ofPath file.Path)
                     |> List.distinct
                     |> List.sort
-                oldest =
-                    realtimes
-                    |> function
-                        | [] -> None
-                        | values -> Some(Clock.toInstant (List.min values))
-                newest =
-                    realtimes
-                    |> function
-                        | [] -> None
-                        | values -> Some(Clock.toInstant (List.max values))
+                oldest = bound List.min
+                newest = bound List.max
             |})

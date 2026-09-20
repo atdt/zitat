@@ -11,7 +11,7 @@ type private Segment =
         Count: int64
     }
 
-/// Entry offsets in an ENTRY_ARRAY chain ascend with time, allowing binary search.
+/// ENTRY_ARRAY chains store offsets from oldest to newest.
 /// Appended arrays double in capacity, limiting a chain to O(log n) segments.
 [<Sealed>]
 type EntryArrayChain
@@ -54,8 +54,7 @@ type EntryArrayChain
                 arrayOffset <-
                     int64 (mapping.ReadUInt64(arrayOffset + Format.EntryArray.NextOffset))
 
-            // A file being written can advertise entries before its arrays
-            // link them. Use only the entries reached through the chain.
+            // Only use entries reachable through the chain.
             found.ToArray()
 
     let count =
@@ -104,14 +103,7 @@ type EntryArrayChain
 
     /// Returns the first index with an offset at least `target`, or Count.
     member this.LowerBoundOffset(target: int64) =
-        let mutable low = 0L
-        let mutable high = this.Count
-
-        while low < high do
-            let mid = low + (high - low) / 2L
-            if this[mid] < target then low <- mid + 1L else high <- mid
-
-        low
+        this.LowerBound((fun offset -> uint64 offset), uint64 target)
 
     /// Returns the first index with a key at least `target`, or Count.
     member this.LowerBound(keyOf: int64 -> uint64, target: uint64) =
@@ -128,8 +120,7 @@ type EntryArrayChain
 
         low
 
-/// Header fields that systemd updates during writes are read on each access.
-/// Caching them would hide entries appended to an open journal file.
+/// Read dynamic header fields on each access.
 [<Sealed>]
 type JournalFile private (mapping: Mapping) =
     let path = mapping.Path
@@ -155,7 +146,7 @@ type JournalFile private (mapping: Mapping) =
         else
             Format.Data.RegularPayload
 
-    /// Unknown incompatible flags make the file unsafe to interpret.
+    /// Reject files with unknown incompatible flags.
     static let supported =
         IncompatibleFlags.KeyedHash
         ||| IncompatibleFlags.Compact

@@ -85,7 +85,7 @@ type private UnionCursor(chains: EntryArrayChain[], direction: Direction) =
         recompute ()
 
     member _.MoveNext() =
-        // Advance every chain at this offset to avoid emitting an entry twice.
+        // Advance every chain at this offset.
         match current with
         | ValueNone -> ValueNone
         | ValueSome emitted ->
@@ -95,8 +95,7 @@ type private UnionCursor(chains: EntryArrayChain[], direction: Direction) =
 
             recompute ()
 
-/// Scans candidates from the term with the fewest entries to limit the number
-/// of entries checked against the other terms.
+/// Scans candidates from the term with the fewest entries.
 [<Sealed>]
 type FileScan(file: JournalFile, terms: Term list, direction: Direction, bound: int64 voption) =
     let chainsFor (term: Term) =

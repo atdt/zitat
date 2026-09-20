@@ -18,7 +18,7 @@ type LiveHub() =
             subscriber.Writer.TryWrite(()) |> ignore
 
     member _.Subscribe() =
-        // One pending signal suffices because each wake-up replays from the journal.
+        // Keep at most one pending signal.
         let options = BoundedChannelOptions(1)
         options.FullMode <- BoundedChannelFullMode.DropOldest
         options.SingleReader <- true

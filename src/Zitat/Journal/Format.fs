@@ -98,7 +98,7 @@ module Format =
     [<Literal>]
     let HashItemSize = 16L
 
-    /// Matches systemd's DATA_SIZE_MAX and caps decompressed DATA payloads.
+    /// Matches systemd's DATA_SIZE_MAX and limits decompressed DATA payloads.
     [<Literal>]
     let MaxPayloadSize = 768 * 1024 * 1024
 
@@ -130,8 +130,7 @@ type FileState =
     | Archived
     | UnknownState of byte
 
-/// An unsupported format must be reported. Ignoring unknown incompatible
-/// flags can produce incorrect entries.
+/// Report unsupported formats.
 exception UnsupportedJournal of path: string * reason: string
 
 exception CorruptJournal of path: string * reason: string
