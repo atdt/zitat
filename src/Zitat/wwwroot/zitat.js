@@ -32,7 +32,6 @@ function appendFilter(name, value) {
   refresh();
 }
 
-// Journal field values may contain spaces, so quote anything that has one.
 function quote(value) {
   return /\s/.test(value) ? `"${value}"` : value;
 }
@@ -76,8 +75,7 @@ function render(item, prepend = false) {
   );
 
   row.querySelector('.message').textContent = item.message;
-  // The journal carries far more per entry than the row shows; keep all of it
-  // reachable without a detail view.
+  // The row shows selected fields; its tooltip exposes all journal fields.
   row.title = item.fields.map(([name, value]) => `${name}=${value}`).join('\n');
   prepend ? list.prepend(row) : list.append(row);
 }

@@ -2,21 +2,15 @@ namespace Zitat.Journal
 
 open System
 
-/// Which end of the stream iteration starts from.
 type Direction =
     | Newest
     | Oldest
 
-/// A conjunction of disjunctions over DATA objects within one file: an entry
-/// matches when, for every term, it references at least one of that term's
-/// objects. `host:iron severity:<=3` becomes two terms, the second holding
-/// one object per admitted priority.
-///
-/// A term that resolved to no objects at all cannot match anything, which the
-/// planner detects before iterating.
+/// Each term accepts any of its DATA objects. An entry matches when it
+/// references an accepted object for every term. A severity range forms one
+/// term with an object for each accepted priority.
 type Term = { Field: string; Objects: int64[] }
 
-/// A position in one entry array chain, movable in a fixed direction.
 [<Sealed>]
 type private ChainCursor(chain: EntryArrayChain, direction: Direction) =
     let count = chain.Count
@@ -28,15 +22,14 @@ type private ChainCursor(chain: EntryArrayChain, direction: Direction) =
         else
             ValueSome chain[index]
 
-    /// Positions at the first entry at or beyond `bound`, or at the extreme
-    /// end of the chain when unbounded.
+    /// Positions at or below `bound` for Newest, or at or above it for Oldest.
+    /// Without a bound, starts at the corresponding end of the chain.
     member this.Seek(bound: int64 voption) =
         index <-
             match direction, bound with
             | Newest, ValueNone -> count - 1L
             | Oldest, ValueNone -> 0L
             | Newest, ValueSome offset ->
-                // The last entry at or below the bound.
                 let position = chain.LowerBoundOffset offset
 
                 if position < count && chain[position] = offset then
@@ -58,8 +51,7 @@ type private ChainCursor(chain: EntryArrayChain, direction: Direction) =
         else
             ValueSome chain[index]
 
-/// The union of several chains, presented as one ordered stream. A term such
-/// as `severity:<=3` spans one chain per admitted priority value.
+/// Merges the chains for one term into an ordered stream.
 [<Sealed>]
 type private UnionCursor(chains: EntryArrayChain[], direction: Direction) =
     let cursors = chains |> Array.map (fun chain -> ChainCursor(chain, direction))
@@ -93,8 +85,7 @@ type private UnionCursor(chains: EntryArrayChain[], direction: Direction) =
         recompute ()
 
     member _.MoveNext() =
-        // Every chain sitting on the emitted offset advances; a single entry
-        // may be referenced by several of a term's objects.
+        // Advance every chain at this offset to avoid emitting an entry twice.
         match current with
         | ValueNone -> ValueNone
         | ValueSome emitted ->
@@ -104,16 +95,8 @@ type private UnionCursor(chains: EntryArrayChain[], direction: Direction) =
 
             recompute ()
 
-/// Iterates the entries of one file that satisfy every term, in `direction`,
-/// starting from an optional entry-offset bound.
-///
-/// One term drives the iteration and the rest are tested per candidate. The
-/// driver is the term with the fewest entries, so the number of candidates
-/// examined is bounded by the most selective filter available. Testing a
-/// candidate against the remaining terms compares integers against the entry's
-/// item array, which the format documentation notes is short (under 30 items),
-/// so this stays within a constant factor of a full k-way intersection while
-/// avoiding its machinery.
+/// Scans candidates from the term with the fewest entries to limit the number
+/// of entries checked against the other terms.
 [<Sealed>]
 type FileScan(file: JournalFile, terms: Term list, direction: Direction, bound: int64 voption) =
     let chainsFor (term: Term) =
@@ -126,7 +109,6 @@ type FileScan(file: JournalFile, terms: Term list, direction: Direction, bound: 
             let size = chains |> Array.sumBy _.Count
             size, term, chains)
 
-    // A term matching nothing makes the whole conjunction unsatisfiable.
     let unsatisfiable = sized |> List.exists (fun (size, _, _) -> size = 0L)
 
     let driver, others =
@@ -156,7 +138,6 @@ type FileScan(file: JournalFile, terms: Term list, direction: Direction, bound: 
 
     member _.File = file
 
-    /// Advances to the next matching entry offset.
     member _.Next() =
         if unsatisfiable then
             ValueNone

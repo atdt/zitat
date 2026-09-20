@@ -37,8 +37,6 @@ module JournalTests =
         Assert.True(Cursor.order first 42UL 100UL < Cursor.order second 42UL 100UL)
 
     [<Theory>]
-    // systemd-journal-remote names a file after its sender and appends an
-    // @-suffix on rotation.
     [<InlineData("/var/log/journal/remote/remote-203.0.113.10.journal", "203.0.113.10")>]
     [<InlineData("/var/log/journal/remote/remote-203.0.113.10@25a7-0000-0006.journal",
                  "203.0.113.10")>]

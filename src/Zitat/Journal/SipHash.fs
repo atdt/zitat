@@ -3,10 +3,9 @@ namespace Zitat.Journal
 open System
 open System.Buffers.Binary
 
-/// SipHash-2-4, keyed by the journal file's 128-bit file_id. Journal files
-/// written since systemd 246 set HEADER_INCOMPATIBLE_KEYED_HASH and hash every
-/// DATA and FIELD payload this way; the reader recomputes the hash to locate
-/// objects in the hash tables.
+/// SipHash-2-4 with the journal file's 128-bit file ID as the key. Files with
+/// HEADER_INCOMPATIBLE_KEYED_HASH use this hash for DATA and FIELD payloads.
+/// The reader recomputes the hash to locate objects in the journal's tables.
 module SipHash =
 
     let inline private rotl (value: uint64) (bits: int) =
@@ -52,8 +51,8 @@ module SipHash =
             round &v0 &v1 &v2 &v3
             v0 <- v0 ^^^ m
 
-        // The final block is the remaining bytes, zero-padded, with the total
-        // input length in the most significant byte.
+        // The final block holds the remaining bytes and the low eight bits of
+        // the input length in its most significant byte.
         let mutable tail = (uint64 data.Length &&& 0xffUL) <<< 56
         let remainder = data.Slice(blocks * 8)
 

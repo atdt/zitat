@@ -6,9 +6,9 @@ open Xunit
 open Zitat
 open Zitat.Journal
 
-/// Tests against a journal tree. Corpus/journal is a small, synthetic
-/// corpus checked into the repository, generated as described in its
-/// README.
+/// The journal tree in this repository contains synthetic entries. Hostnames use
+/// `iron`, `cobalt`, and `nickel`. IP addresses use the RFC 5737 documentation
+/// range `203.0.113.0/24`.
 module Corpus =
     let path = Path.Combine(__SOURCE_DIRECTORY__, "Corpus", "journal")
 
@@ -18,10 +18,6 @@ module CorpusTests =
         set.Refresh()
         test (JournalReader set)
 
-    /// The strongest check available without a second implementation: every
-    /// field of every sampled entry is looked up by its own recomputed hash and
-    /// must resolve to the very object the entry pointed at. It exercises
-    /// siphash, the hash table, compact offsets and decompression at once.
     [<Fact>]
     let ``every field resolves to the object the entry references`` () =
         use set = new JournalSet(Corpus.path, ignore)

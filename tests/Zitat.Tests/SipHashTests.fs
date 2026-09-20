@@ -5,9 +5,8 @@ open Xunit
 open Zitat.Journal
 
 module SipHashTests =
-    /// The vector systemd's own src/test/test-siphash24.c asserts, which is in
-    /// turn the one from the SipHash paper. Journal hash lookups are wrong in
-    /// silence if this drifts.
+    // This vector appears in the SipHash paper and systemd's
+    // src/test/test-siphash24.c.
     [<Fact>]
     let ``matches the reference vector`` () =
         let key = Array.init 16 byte

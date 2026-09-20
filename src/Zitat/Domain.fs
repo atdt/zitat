@@ -2,8 +2,8 @@ namespace Zitat
 
 open System
 
-/// A journal entry projected for the API. Fields retains all journal fields,
-/// including underscore-prefixed metadata.
+/// Fields preserves every journal field, including underscore-prefixed metadata
+/// that has no dedicated API property.
 type LogEntry =
     {
         Cursor: string
@@ -20,7 +20,8 @@ type LogEntry =
         Fields: (string * string) list
     }
 
-/// Severity counts down from 0, so "error and worse" is AtMost 3.
+/// Journal severity 0 is the most severe. `AtMost 3` includes errors and all
+/// more severe entries.
 type NumericFilter =
     | Exactly of int
     | AtMost of int

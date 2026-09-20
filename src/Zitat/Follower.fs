@@ -8,13 +8,12 @@ open Microsoft.Extensions.Hosting
 open Microsoft.Extensions.Logging
 open Zitat.Journal
 
-/// Refreshes the journal file set and notifies live subscribers after each scan.
 type JournalFollower
     (options: ZitatOptions, set: JournalSet, live: LiveHub, logger: ILogger<JournalFollower>) =
     inherit BackgroundService()
 
     let changed = new SemaphoreSlim(0, 1)
-    // FileSystemWatcher can miss notifications; poll to recover.
+    // Polling recovers changes missed by FileSystemWatcher.
     let pollInterval = TimeSpan.FromSeconds 1.
 
     let signal () =

@@ -6,22 +6,19 @@ Wants=network-online.target
 [Service]
 Type=notify
 DynamicUser=yes
-# Zitat only reads. Membership of systemd-journal grants the journal tree,
-# including the files systemd-journal-remote writes.
+# systemd-journal grants read access to local and remote journal files.
 SupplementaryGroups=systemd-journal
 WorkingDirectory=/opt/zitat
 ExecStart=/opt/zitat/zitat
 Environment=ASPNETCORE_URLS=http://127.0.0.1:8080
 Environment=Zitat__JournalDirectory=/var/log/journal
 EnvironmentFile=-/etc/zitat.env
-# A hosted service that dies takes the host down with a clean exit, so
-# on-failure would leave the service dead. Always restart.
+# A failed hosted service can stop the host with a clean exit. Restart it
+# even when systemd does not classify the exit as a failure.
 Restart=always
 RestartSec=5s
 
-# Sized for a modest host (e.g. a 2 GB, 4-core single-board computer).
-# Journal files are memory-mapped, so most of the resident size is page
-# cache the kernel can reclaim. These caps bound the process itself.
+# Resource limits target a host with 2 GB of memory and four CPU cores.
 MemoryHigh=192M
 MemoryMax=256M
 CPUQuota=150%

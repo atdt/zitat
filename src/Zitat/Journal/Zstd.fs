@@ -3,9 +3,7 @@ namespace Zitat.Journal
 open System
 open System.Threading
 
-/// Journal payloads above 512 bytes are stored compressed; journal-remote
-/// defaults to zstd. Decompressor instances are stateful, so each thread keeps
-/// its own.
+/// Decompressor instances retain state. Each thread uses its own instance.
 module Zstd =
     let private decompressor =
         new ThreadLocal<ZstdSharp.Decompressor>(fun () -> new ZstdSharp.Decompressor())

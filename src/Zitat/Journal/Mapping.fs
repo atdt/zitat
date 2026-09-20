@@ -1,6 +1,6 @@
 namespace Zitat.Journal
 
-#nowarn 9 // Native pointers are confined to this type.
+#nowarn 9 // Native pointer reads are confined to Mapping.
 
 open System
 open System.Buffers.Binary
@@ -8,13 +8,9 @@ open System.IO
 open System.IO.MemoryMappedFiles
 open Microsoft.FSharp.NativeInterop
 
-/// A read-only memory map over a whole journal file, exposing bounds-checked
-/// primitive reads. Offsets in the format are absolute from the start of the
-/// file, so this API takes absolute offsets throughout.
-///
-/// Every read validates its range. The format documentation requires readers
-/// to verify offsets before dereferencing them, because a truncated or
-/// corrupted file is expected rather than exceptional.
+/// Reads a journal file through a read-only memory map. Offsets are absolute
+/// from the start of the file. Every read checks its bounds because journal
+/// files can be truncated or corrupt.
 [<Sealed>]
 type Mapping
     private (path: string, mapped: MemoryMappedFile, view: MemoryMappedViewAccessor, length: int64)
@@ -48,8 +44,7 @@ type Mapping
 
     member _.Path = path
 
-    /// The size of the file at the moment it was mapped. A file still being
-    /// written grows past this; the directory layer remaps when it does.
+    /// File size at map time. JournalSet remaps the file when it grows.
     member _.Length = length
 
     member private _.Address(offset: int64, size: int64) =
@@ -75,7 +70,7 @@ type Mapping
         let address = this.Address(offset, 1L)
         NativePtr.read (NativePtr.ofNativeInt<byte> address)
 
-    /// Valid only while the mapping is alive and never across a remap.
+    /// The span becomes invalid when the mapping is disposed or remapped.
     member this.Span(offset: int64, size: int) : ReadOnlySpan<byte> =
         let address = this.Address(offset, int64 size)
         ReadOnlySpan<byte>(address.ToPointer(), size)

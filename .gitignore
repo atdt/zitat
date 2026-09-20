@@ -8,7 +8,7 @@ artifacts/
 
 systemd_*.orig.tar.gz
 
-# Local agent-tooling notes: machine-specific, not for the repo.
+# Local agent instruction files stay outside version control.
 /CLAUDE.md
 /AGENTS.md
 /GEMINI.md

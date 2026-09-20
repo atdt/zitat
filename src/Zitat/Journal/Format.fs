@@ -6,7 +6,7 @@ open System
 /// systemd's src/libsystemd/sd-journal/journal-def.h.
 module Format =
     [<Literal>]
-    let Signature = 0x48524848534b504cUL // "LPKSHHRH", little-endian
+    let Signature = 0x48524848534b504cUL // "LPKSHHRH" in little-endian order.
 
     [<Literal>]
     let HeaderMinimumSize = 200L
@@ -41,8 +41,7 @@ module Format =
         [<Literal>]
         let Tag = 7uy
 
-    /// Field offsets within an ENTRY object. Items begin at EntryItems and are
-    /// 4 bytes wide in compact files, 16 bytes otherwise.
+    /// ENTRY items are 4 bytes wide in compact files and 16 bytes otherwise.
     module Entry =
         [<Literal>]
         let Seqnum = 16L
@@ -62,7 +61,6 @@ module Format =
         [<Literal>]
         let Items = 64L
 
-    /// Field offsets within a DATA object.
     module Data =
         [<Literal>]
         let Hash = 16L
@@ -89,7 +87,6 @@ module Format =
         [<Literal>]
         let RegularPayload = 64L
 
-    /// Field offsets within an ENTRY_ARRAY object.
     module EntryArray =
         [<Literal>]
         let NextOffset = 16L
@@ -97,12 +94,11 @@ module Format =
         [<Literal>]
         let Items = 24L
 
-    /// A DATA_HASH_TABLE cell: head and tail offsets of a collision chain.
+    /// Each DATA_HASH_TABLE cell holds the head and tail of a collision chain.
     [<Literal>]
     let HashItemSize = 16L
 
-    /// systemd's DATA_SIZE_MAX. A larger decompressed payload means a corrupt
-    /// or hostile frame rather than a log line.
+    /// Matches systemd's DATA_SIZE_MAX and caps decompressed DATA payloads.
     [<Literal>]
     let MaxPayloadSize = 768 * 1024 * 1024
 
@@ -122,7 +118,6 @@ type CompatibleFlags =
     | TailEntryBootId = 2u
     | SealedContinuous = 4u
 
-/// Payload compression, taken from the low bits of an object header's flags.
 type Compression =
     | Uncompressed
     | Zstd
@@ -135,9 +130,8 @@ type FileState =
     | Archived
     | UnknownState of byte
 
-/// Raised for any file this reader will not interpret. The caller is expected
-/// to surface it rather than fall back: a file carrying flags we do not
-/// implement cannot be read correctly, only incorrectly.
+/// An unsupported format must be reported. Ignoring unknown incompatible
+/// flags can produce incorrect entries.
 exception UnsupportedJournal of path: string * reason: string
 
 exception CorruptJournal of path: string * reason: string

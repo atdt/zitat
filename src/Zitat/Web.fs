@@ -138,7 +138,7 @@ module Web =
 
             let items = reader.Search parsed
 
-            // A full page may have more entries; the reader does not check ahead.
+            // A full page does not prove that another page exists.
             let next =
                 if items.Length = parsed.Limit then
                     items |> List.tryLast |> Option.map _.Cursor
@@ -250,7 +250,7 @@ module Web =
                         context.Response.StatusCode <- StatusCodes.Status200OK
                         context.Response.ContentType <- "text/event-stream"
                         context.Response.Headers.CacheControl <- "no-cache"
-                        // Flush headers so EventSource opens before the first entry arrives.
+                        // EventSource waits for response headers before it opens.
                         do! context.Response.Body.FlushAsync(token)
                         do! replay ()
 

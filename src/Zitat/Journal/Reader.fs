@@ -32,11 +32,10 @@ module Fields =
     let BootId = "_BOOT_ID"
 
 module private Clock =
-    // A journal microsecond equals ten DateTimeOffset ticks.
     let toInstant (microseconds: uint64) =
         DateTimeOffset.UnixEpoch.AddTicks(int64 microseconds * 10L)
 
-    // Floor until and ceil since to the journal's microsecond precision.
+    // Round inclusive until down and inclusive since up to journal microseconds.
     let upperBound (instant: DateTimeOffset) =
         let ticks = (instant - DateTimeOffset.UnixEpoch).Ticks
         if ticks <= 0L then 0UL else uint64 ticks / 10UL
@@ -76,7 +75,7 @@ module Cursor =
             None
 
 module Source =
-    // systemd-journal-remote uses remote-<sender>[@...].journal filenames.
+    // The @ suffix marks a rotated file and is not part of the source name.
     let ofPath (path: string) =
         let name =
             Path.GetFileNameWithoutExtension path |> Option.ofObj |> Option.defaultValue ""
@@ -129,9 +128,9 @@ type JournalSet(root: string, log: string -> unit) =
                     try
                         files[path] <- JournalFile.Open path
                     with
-                    // Abort refresh so unsupported formats are not silently omitted.
+                    // Unsupported formats must be reported to the caller.
                     | UnsupportedJournal _ -> reraise ()
-                    // Skip corrupt files so other files remain readable.
+                    // One corrupt file must not hide entries in other files.
                     | CorruptJournal(path, reason) -> log $"skipping %s{path}: %s{reason}")
 
     member _.Use(action: JournalFile list -> 'a) =
@@ -157,7 +156,6 @@ type JournalReader(set: JournalSet) =
             let value = Encoding.UTF8.GetString(payload, at + 1, payload.Length - at - 1)
             name, value
 
-    // An indexed value absent from this file rules out the file.
     let termsFor (file: JournalFile) (query: LogQuery) =
         let single field value =
             match value with
@@ -220,7 +218,7 @@ type JournalReader(set: JournalSet) =
                 | _ -> None)
             (Some [])
 
-    // None excludes the file. Some ValueNone leaves the scan unbounded.
+    // None excludes the file. Some ValueNone includes it without a start bound.
     let boundFor (file: JournalFile) (direction: Direction) (limit: uint64 option) =
         match limit with
         | None -> Some ValueNone
@@ -300,7 +298,6 @@ type JournalReader(set: JournalSet) =
             let sinceUsec = query.Since |> Option.map Clock.lowerBound
             let untilUsec = query.Until |> Option.map Clock.upperBound
 
-            // The cursor timestamp narrows the scan before the full cursor is compared.
             let cursorRealtime = cursor |> Option.map (fun (_, _, realtime) -> realtime)
 
             let upper =
@@ -386,7 +383,6 @@ type JournalReader(set: JournalSet) =
                         | _ -> false
 
                     if past then
-                        // This scan is time-ordered and cannot re-enter the range.
                         heads[chosen] <- ValueNone
                     else
                         let afterCursor =
@@ -402,7 +398,6 @@ type JournalReader(set: JournalSet) =
 
             List.ofSeq results)
 
-    /// Returns matching entries newest first.
     member this.Search(query: LogQuery) = this.Collect(query, Newest)
 
     /// Returns matching entries oldest first, after Before when supplied.

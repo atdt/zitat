@@ -11,12 +11,8 @@ type private Segment =
         Count: int64
     }
 
-/// Random access over a chain of ENTRY_ARRAY objects.
-///
-/// A chain holds entry offsets in strictly ascending order, and entry offsets
-/// ascend with time, so a chain can be bisected. Arrays double in size as they
-/// are appended, so a chain covering n entries has O(log n) segments and the
-/// segment table is cheap to build and keep.
+/// Entry offsets in an ENTRY_ARRAY chain ascend with time, allowing binary search.
+/// Appended arrays double in capacity, limiting a chain to O(log n) segments.
 [<Sealed>]
 type EntryArrayChain
     (mapping: Mapping, compact: bool, head: int64, first: int64 voption, total: int64) =
@@ -58,16 +54,14 @@ type EntryArrayChain
                 arrayOffset <-
                     int64 (mapping.ReadUInt64(arrayOffset + Format.EntryArray.NextOffset))
 
-            // If the header's count outruns the chain the file is mid-write
-            // or truncated; serving what is actually linked is the documented
-            // way to degrade.
+            // A file being written can advertise entries before its arrays
+            // link them. Use only the entries reached through the chain.
             found.ToArray()
 
     let count =
         lazy (inlineCount + (segments.Value |> Array.sumBy (fun segment -> segment.Count)))
 
-    /// The number of entries actually reachable, which for a file still being
-    /// written may be fewer than the header claims.
+    /// The number of entries reachable through the chain.
     member _.Count = count.Value
 
     member _.Item
@@ -108,9 +102,7 @@ type EntryArrayChain
                 else
                     int64 (mapping.ReadUInt64 position)
 
-    /// The index of the first item whose entry offset is at least `target`,
-    /// or Count when every entry sorts below it. Entry offsets ascend with
-    /// time, so this doubles as a seek by position in the stream.
+    /// Returns the first index with an offset at least `target`, or Count.
     member this.LowerBoundOffset(target: int64) =
         let mutable low = 0L
         let mutable high = this.Count
@@ -121,8 +113,7 @@ type EntryArrayChain
 
         low
 
-    /// The index of the first entry whose key is at least `target`, or Count
-    /// when every entry sorts below it.
+    /// Returns the first index with a key at least `target`, or Count.
     member this.LowerBound(keyOf: int64 -> uint64, target: uint64) =
         let mutable low = 0L
         let mutable high = this.Count
@@ -137,11 +128,8 @@ type EntryArrayChain
 
         low
 
-/// One memory-mapped journal file.
-///
-/// Fields that systemd rewrites in place as entries are appended are read from
-/// the mapping on every access rather than cached, so an open file that
-/// journal-remote is still writing reports its current contents.
+/// Header fields that systemd updates during writes are read on each access.
+/// Caching them would hide entries appended to an open journal file.
 [<Sealed>]
 type JournalFile private (mapping: Mapping) =
     let path = mapping.Path
@@ -167,8 +155,7 @@ type JournalFile private (mapping: Mapping) =
         else
             Format.Data.RegularPayload
 
-    /// Flags this reader understands. Anything else means the file uses a
-    /// feature whose absence would make us misread it, so we refuse it.
+    /// Unknown incompatible flags make the file unsafe to interpret.
     static let supported =
         IncompatibleFlags.KeyedHash
         ||| IncompatibleFlags.Compact
@@ -219,7 +206,6 @@ type JournalFile private (mapping: Mapping) =
     member _.CompatibleFlags = compatible
     member _.IncompatibleFlags = incompatible
 
-    /// The length at map time. A file still being appended to outgrows this.
     member _.MappedLength = mapping.Length
 
     member _.State =
@@ -232,8 +218,6 @@ type JournalFile private (mapping: Mapping) =
     member _.EntryCount = int64 (mapping.ReadUInt64 152L)
     member _.HeadRealtime = mapping.ReadUInt64 184L
     member _.TailRealtime = mapping.ReadUInt64 192L
-
-    // ---- Objects -------------------------------------------------------
 
     member private _.CheckObject(offset: int64, expected: byte) =
         if offset < headerSize || offset % Format.Alignment <> 0L then
@@ -262,7 +246,6 @@ type JournalFile private (mapping: Mapping) =
         | other ->
             raise (CorruptJournal(path, $"object at %d{offset} has compression bits %d{other}"))
 
-    /// The `FIELD=value` bytes of a DATA object, decompressed if needed.
     member this.DataPayload(offset: int64) : byte[] =
         this.CheckObject(offset, Format.ObjectType.Data)
         let size = this.ObjectSize offset
@@ -278,8 +261,6 @@ type JournalFile private (mapping: Mapping) =
             raise (
                 UnsupportedJournal(path, $"data object at %d{offset} uses %A{other} compression")
             )
-
-    // ---- Entries -------------------------------------------------------
 
     member _.EntryRealtime(offset: int64) =
         mapping.ReadUInt64(offset + Format.Entry.Realtime)
@@ -301,11 +282,8 @@ type JournalFile private (mapping: Mapping) =
         else
             int64 (mapping.ReadUInt64 slot)
 
-    /// Whether the entry references the given DATA object.
-    ///
-    /// Equality filters resolve their value to a single DATA offset once per
-    /// file, so testing an entry costs an integer comparison per field and
-    /// never decodes a payload.
+    /// Indexed filters resolve a DATA object once, then test entry offsets
+    /// without decoding each entry's payloads.
     member this.EntryReferences(entryOffset: int64, dataOffset: int64) =
         let count = this.EntryItemCount entryOffset
         let mutable index = 0L
@@ -319,10 +297,8 @@ type JournalFile private (mapping: Mapping) =
 
         found
 
-    /// Whether a DATA object's payload begins with `prefix`, without decoding
-    /// the whole of it. An uncompressed payload compares straight off the
-    /// mapping, which is what keeps an unindexed text search affordable: it
-    /// touches a few bytes per field rather than decoding every field.
+    /// Compares uncompressed prefixes in the mapping. Compressed payloads must
+    /// be decoded before comparison.
     member this.PayloadStartsWith(dataOffset: int64, prefix: ReadOnlySpan<byte>) =
         let length = int (this.ObjectSize dataOffset - dataPayloadOffset)
 
@@ -336,8 +312,7 @@ type JournalFile private (mapping: Mapping) =
             payload.Length >= prefix.Length
             && ReadOnlySpan<byte>(payload, 0, prefix.Length).SequenceEqual prefix
 
-    /// The value of one field of an entry, decoding only the field that
-    /// matches. `prefix` is the field name with its trailing `=`.
+    /// `prefix` is the field name with its trailing `=`.
     member this.EntryField(entryOffset: int64, prefix: byte[]) : byte[] voption =
         let count = this.EntryItemCount entryOffset
         let mutable index = 0L
@@ -354,7 +329,6 @@ type JournalFile private (mapping: Mapping) =
 
         result
 
-    /// Every `FIELD=value` pair of an entry, in stored order.
     member this.EntryFields(entryOffset: int64) =
         this.CheckObject(entryOffset, Format.ObjectType.Entry)
         let count = this.EntryItemCount entryOffset
@@ -362,9 +336,6 @@ type JournalFile private (mapping: Mapping) =
         Array.init (int count) (fun index ->
             this.DataPayload(this.EntryItem(entryOffset, int64 index)))
 
-    // ---- Indexes -------------------------------------------------------
-
-    /// The chain of every entry in the file, oldest first.
     member this.GlobalChain() =
         EntryArrayChain(
             mapping,
@@ -374,8 +345,7 @@ type JournalFile private (mapping: Mapping) =
             this.EntryCount
         )
 
-    /// The chain of entries referencing one DATA object, oldest first. The
-    /// first entry is stored inline in the DATA object itself.
+    /// The DATA object stores its first entry inline, before its entry array.
     member _.DataChain(dataOffset: int64) =
         let inlineEntry = int64 (mapping.ReadUInt64(dataOffset + Format.Data.EntryOffset))
 
@@ -392,7 +362,6 @@ type JournalFile private (mapping: Mapping) =
 
         EntryArrayChain(mapping, compact, arrayHead, first, total)
 
-    /// Locates the DATA object holding exactly these `FIELD=value` bytes.
     member this.FindData(payload: ReadOnlySpan<byte>) : int64 voption =
         if dataHashTableSize <= 0L then
             ValueNone
@@ -416,8 +385,7 @@ type JournalFile private (mapping: Mapping) =
                     )
 
                 if mapping.ReadUInt64(candidate + Format.Data.Hash) = hash then
-                    // The stored hash matches; confirm on the bytes themselves,
-                    // since a 64-bit hash still admits collisions.
+                    // A matching hash does not rule out a collision.
                     if payload.SequenceEqual(ReadOnlySpan<byte>(this.DataPayload candidate)) then
                         result <- ValueSome candidate
 
