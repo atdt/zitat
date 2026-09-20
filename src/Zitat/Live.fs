@@ -6,22 +6,23 @@ open System.Threading.Channels
 
 type LiveSubscription =
     {
-        Reader: ChannelReader<LogEntry>
+        Reader: ChannelReader<unit>
         Dispose: unit -> unit
     }
 
 type LiveHub() =
-    let subscribers = ConcurrentDictionary<Guid, Channel<LogEntry>>()
+    let subscribers = ConcurrentDictionary<Guid, Channel<unit>>()
 
-    member _.Publish(entry: LogEntry) =
+    member _.Notify() =
         for subscriber in subscribers.Values do
-            subscriber.Writer.TryWrite entry |> ignore
+            subscriber.Writer.TryWrite(()) |> ignore
 
     member _.Subscribe() =
-        let options = BoundedChannelOptions(1000)
+        // Notifications coalesce; subscribers replay entries from the journal.
+        let options = BoundedChannelOptions(1)
         options.FullMode <- BoundedChannelFullMode.DropOldest
         options.SingleReader <- true
-        let channel = Channel.CreateBounded<LogEntry>(options)
+        let channel = Channel.CreateBounded<unit>(options)
         let id = Guid.NewGuid()
         subscribers[id] <- channel
 

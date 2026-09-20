@@ -175,6 +175,39 @@ module CorpusTests =
             Assert.Equal<string list>(backward, forward))
 
     [<CorpusFact>]
+    let ``forward replay crosses the reader page limit`` () =
+        withReader (fun reader ->
+            let recent = reader.Search { Query.empty with Limit = 1000 }
+
+            let older =
+                reader.Search
+                    { Query.empty with
+                        Before = recent |> List.last |> fun entry -> Some entry.Cursor
+                        Limit = 201
+                    }
+
+            Assert.Equal(201, older.Length)
+            let anchor = older |> List.last
+
+            let first =
+                reader.Forward
+                    { Query.empty with
+                        Before = Some anchor.Cursor
+                        Limit = 1000
+                    }
+
+            let second =
+                reader.Forward
+                    { Query.empty with
+                        Before = first |> List.last |> fun entry -> Some entry.Cursor
+                        Limit = 1000
+                    }
+
+            let expected = (older |> List.take 200 |> List.rev) @ (recent |> List.rev)
+            let actual = first @ second
+            Assert.Equal<string list>(expected |> List.map _.Cursor, actual |> List.map _.Cursor))
+
+    [<CorpusFact>]
     let ``a time range excludes everything outside it`` () =
         withReader (fun reader ->
             let newest = reader.Search({ Query.empty with Limit = 1 }) |> List.head

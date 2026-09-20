@@ -5,6 +5,11 @@ open Xunit
 open Zitat
 
 module QueryTests =
+    let private parse text =
+        match Query.parseText text Query.empty with
+        | Ok query -> query
+        | Error error -> failwith error
+
     let private entry =
         {
             Cursor = "cursor"
@@ -23,8 +28,7 @@ module QueryTests =
 
     [<Fact>]
     let ``text syntax separates filters from terms`` () =
-        let result =
-            Query.parseText "host:imp app:sshd severity:5 \"publickey for ori\"" Query.empty
+        let result = parse "host:imp app:sshd severity:5 \"publickey for ori\""
 
         Assert.Equal(Some "imp", result.Hostname)
         Assert.Equal(Some "sshd", result.Application)
@@ -33,8 +37,7 @@ module QueryTests =
 
     [<Fact>]
     let ``text syntax reads the journal-specific filters`` () =
-        let result =
-            Query.parseText "unit:ssh.service boot:abc123 source:100.71.212.2" Query.empty
+        let result = parse "unit:ssh.service boot:abc123 source:100.71.212.2"
 
         Assert.Equal(Some "ssh.service", result.Unit)
         Assert.Equal(Some "abc123", result.BootId)
@@ -43,8 +46,7 @@ module QueryTests =
 
     [<Fact>]
     let ``severity accepts comparison operators`` () =
-        let parse text =
-            (Query.parseText text Query.empty).Severity
+        let parse text = (parse text).Severity
 
         Assert.Equal(Some(AtMost 3), parse "severity:<=3")
         Assert.Equal(Some(AtMost 2), parse "severity:<3")
@@ -54,8 +56,7 @@ module QueryTests =
 
     [<Fact>]
     let ``severity accepts standard names`` () =
-        let parse text =
-            (Query.parseText text Query.empty).Severity
+        let parse text = (parse text).Severity
 
         Assert.Equal(Some(Exactly 3), parse "severity:err")
         Assert.Equal(Some(AtMost 4), parse "severity:<=warning")
@@ -63,9 +64,17 @@ module QueryTests =
 
     [<Fact>]
     let ``facility accepts standard names`` () =
-        Assert.Equal(Some 4, (Query.parseText "facility:auth" Query.empty).Facility)
-        Assert.Equal(Some 3, (Query.parseText "facility:daemon" Query.empty).Facility)
-        Assert.Equal(Some 17, (Query.parseText "facility:17" Query.empty).Facility)
+        Assert.Equal(Some 4, (parse "facility:auth").Facility)
+        Assert.Equal(Some 3, (parse "facility:daemon").Facility)
+        Assert.Equal(Some 17, (parse "facility:17").Facility)
+
+    [<Theory>]
+    [<InlineData("facility:unknown")>]
+    [<InlineData("facility:24")>]
+    [<InlineData("severity:unknown")>]
+    [<InlineData("severity:8")>]
+    let ``invalid named filters are rejected`` text =
+        Assert.True(Query.parseText text Query.empty |> Result.isError)
 
     [<Fact>]
     let ``an empty query matches everything`` () =

@@ -61,16 +61,16 @@ semantics so that the stream cannot show an entry a search would miss.
 
 Journal entries have no database identity, so pagination is a cursor holding
 the writing file's `seqnum_id`, the entry's sequence number, and its timestamp.
-Paging resumes below that position; tailing resumes above it. Two entries from
-different senders sharing a microsecond would order by file, which is stable
-but arbitrary.
+Paging resumes below that position; tailing resumes above it. Entries with the
+same timestamp and sequence number are ordered by `seqnum_id`.
 
 ## Live tail is durable
 
-The previous live stream was an in-process fan-out: delivery was best-effort
-and a client that lost its connection had to re-run its historical query. The
-follower now holds a journal cursor, so a reconnecting client resumes exactly
-where it stopped.
+The follower refreshes the journal file set and signals live subscribers.
+Subscribers read from the journal after their own cursors; notifications can
+coalesce without dropping entries. A history response supplies a cursor for
+the live stream, and SSE event IDs let reconnecting clients resume. Replay is
+limited to entries still retained in the journal.
 
 ## Serialised remapping
 

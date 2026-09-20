@@ -46,6 +46,8 @@ module private Clock =
 /// An opaque position in the merged stream: the writing file's sequence
 /// number identity, its sequence number, and the entry's timestamp.
 module Cursor =
+    let order (seqnumId: byte[]) (seqnum: uint64) (realtime: uint64) = realtime, seqnum, seqnumId
+
     let encode (seqnumId: byte[]) (seqnum: uint64) (realtime: uint64) =
         let buffer = Array.zeroCreate<byte> 32
         Array.blit seqnumId 0 buffer 0 16
@@ -291,14 +293,17 @@ type JournalReader(set: JournalSet) =
     /// Walks every candidate file at once, always taking the entry that sorts
     /// next in `direction`, so the result is one ordered stream across senders.
     ///
-    /// Files are ordered by realtime and then sequence number. Two entries from
-    /// different senders sharing a microsecond fall back to file order, which
-    /// is stable but arbitrary; at microsecond resolution this is not a case
-    /// that arises in practice.
+    /// Entries are ordered by realtime, sequence number, and sequence ID.
+    /// The sequence ID breaks ties across writers and is stored in the cursor.
     member private _.Collect(query: LogQuery, direction: Direction) =
         set.Use(fun openFiles ->
             let limit = Math.Clamp(query.Limit, 1, 1000)
             let cursor = query.Before |> Option.bind Cursor.decode
+
+            let cursorOrder =
+                cursor
+                |> Option.map (fun (id, seqnum, realtime) -> Cursor.order id seqnum realtime)
+
             let sinceUsec = query.Since |> Option.map Clock.ofInstant
             let untilUsec = query.Until |> Option.map Clock.ofInstant
 
@@ -350,8 +355,7 @@ type JournalReader(set: JournalSet) =
 
             while running && results.Count < limit do
                 let mutable chosen = -1
-                let mutable chosenRealtime = 0UL
-                let mutable chosenSeqnum = 0UL
+                let mutable chosenOrder = None
 
                 for index in 0 .. candidates.Length - 1 do
                     match heads[index] with
@@ -360,32 +364,32 @@ type JournalReader(set: JournalSet) =
                         let file, _ = candidates[index]
                         let realtime = file.EntryRealtime offset
                         let seqnum = file.EntrySeqnum offset
+                        let order = Cursor.order file.SeqnumId seqnum realtime
 
                         let better =
-                            chosen < 0
-                            || (match direction with
-                                | Newest ->
-                                    realtime > chosenRealtime
-                                    || (realtime = chosenRealtime && seqnum > chosenSeqnum)
-                                | Oldest ->
-                                    realtime < chosenRealtime
-                                    || (realtime = chosenRealtime && seqnum < chosenSeqnum))
+                            match chosenOrder with
+                            | None -> true
+                            | Some current ->
+                                match direction with
+                                | Newest -> order > current
+                                | Oldest -> order < current
 
                         if better then
                             chosen <- index
-                            chosenRealtime <- realtime
-                            chosenSeqnum <- seqnum
+                            chosenOrder <- Some order
 
                 if chosen < 0 then
                     running <- false
                 else
                     let file, scan = candidates[chosen]
                     let offset = heads[chosen].Value
+                    let order = chosenOrder.Value
+                    let realtime, _, _ = order
 
                     let past =
                         match direction, stopAt with
-                        | Newest, Some bound -> chosenRealtime < bound
-                        | Oldest, Some bound -> chosenRealtime > bound
+                        | Newest, Some bound -> realtime < bound
+                        | Oldest, Some bound -> realtime > bound
                         | _ -> false
 
                     if past then
@@ -394,13 +398,9 @@ type JournalReader(set: JournalSet) =
                         heads[chosen] <- ValueNone
                     else
                         let afterCursor =
-                            match direction, cursor with
-                            | Newest, Some(_, seqnum, realtime) ->
-                                chosenRealtime < realtime
-                                || (chosenRealtime = realtime && chosenSeqnum < seqnum)
-                            | Oldest, Some(_, seqnum, realtime) ->
-                                chosenRealtime > realtime
-                                || (chosenRealtime = realtime && chosenSeqnum > seqnum)
+                            match direction, cursorOrder with
+                            | Newest, Some position -> order < position
+                            | Oldest, Some position -> order > position
                             | _ -> true
 
                         if afterCursor && textMatches file offset query.Text then

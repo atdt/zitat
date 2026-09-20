@@ -30,6 +30,12 @@ module JournalTests =
         Assert.Equal(None, Cursor.decode "")
         Assert.Equal(None, Cursor.decode "AAAA")
 
+    [<Fact>]
+    let ``sequence ID orders entries with the same timestamp and sequence`` () =
+        let first = Array.create 16 0uy
+        let second = Array.create 16 1uy
+        Assert.True(Cursor.order first 42UL 100UL < Cursor.order second 42UL 100UL)
+
     [<Theory>]
     // systemd-journal-remote names a file after its sender and appends an
     // @-suffix on rotation.

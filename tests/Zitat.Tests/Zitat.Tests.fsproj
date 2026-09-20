@@ -8,6 +8,7 @@
     <Compile Include="SipHashTests.fs" />
     <Compile Include="JournalTests.fs" />
     <Compile Include="QueryTests.fs" />
+    <Compile Include="WebTests.fs" />
     <Compile Include="CorpusTests.fs" />
   </ItemGroup>
   <ItemGroup>

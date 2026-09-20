@@ -49,6 +49,7 @@ module Query =
 
     let private severityValue value =
         integer value
+        |> Option.filter (fun number -> number >= 0 && number <= 7)
         |> Option.orElseWith (fun () ->
             named
                 (Map
@@ -69,8 +70,9 @@ module Query =
                     ])
                 value)
 
-    let private facilityValue value =
+    let facilityValue value =
         integer value
+        |> Option.filter (fun number -> number >= 0 && number <= 23)
         |> Option.orElseWith (fun () ->
             named
                 (Map
@@ -121,35 +123,37 @@ module Query =
             severityValue value |> Option.map Exactly
 
     let parseText (value: string) (query: LogQuery) =
-        let apply (result: LogQuery, text: string list) (token: string) =
-            match token.Split(':', 2) with
-            | [| "host"; value |] -> { result with Hostname = Some value }, text
-            | [| "app"; value |] -> { result with Application = Some value }, text
-            | [| "unit"; value |] -> { result with Unit = Some value }, text
-            | [| "source"; value |] -> { result with Source = Some value }, text
-            | [| "boot"; value |] -> { result with BootId = Some value }, text
-            | [| "facility"; value |] ->
-                { result with
-                    Facility = facilityValue value
-                },
-                text
-            | [| "severity"; value |] ->
-                { result with
-                    Severity = numericFilter value
-                },
-                text
-            | _ -> result, token :: text
+        let apply (state: Result<LogQuery * string list, string>) (token: string) =
+            state
+            |> Result.bind (fun (result, text) ->
+                match token.Split(':', 2) with
+                | [| "host"; value |] -> Ok({ result with Hostname = Some value }, text)
+                | [| "app"; value |] -> Ok({ result with Application = Some value }, text)
+                | [| "unit"; value |] -> Ok({ result with Unit = Some value }, text)
+                | [| "source"; value |] -> Ok({ result with Source = Some value }, text)
+                | [| "boot"; value |] -> Ok({ result with BootId = Some value }, text)
+                | [| "facility"; value |] ->
+                    match facilityValue value with
+                    | Some number -> Ok({ result with Facility = Some number }, text)
+                    | None -> Error $"invalid facility: {value}"
+                | [| "severity"; value |] ->
+                    match numericFilter value with
+                    | Some filter -> Ok({ result with Severity = Some filter }, text)
+                    | None -> Error $"invalid severity: {value}"
+                | _ -> Ok(result, token :: text))
 
-        let parsed, remaining = tokens value |> List.fold apply (query, [])
-        let joined = remaining |> List.rev |> String.concat " "
+        tokens value
+        |> List.fold apply (Ok(query, []))
+        |> Result.map (fun (parsed, remaining) ->
+            let joined = remaining |> List.rev |> String.concat " "
 
-        let text =
-            if String.IsNullOrWhiteSpace joined then
-                None
-            else
-                Some joined
+            let text =
+                if String.IsNullOrWhiteSpace joined then
+                    None
+                else
+                    Some joined
 
-        { parsed with Text = text }
+            { parsed with Text = text })
 
     /// Tests an entry against a query in memory, for filtering the live
     /// stream. Exact-value filters are case-sensitive here for the same reason

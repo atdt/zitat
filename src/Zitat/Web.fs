@@ -21,26 +21,22 @@ module Web =
         let text = context.Request.Query[name].ToString()
         if String.IsNullOrWhiteSpace text then None else Some text
 
-    let private integer name context =
-        value name context
-        |> Option.bind (fun text ->
-            match Int32.TryParse text with
-            | true, parsed -> Some parsed
-            | _ -> None)
+    let private integer (text: string) =
+        match Int32.TryParse text with
+        | true, parsed -> Some parsed
+        | _ -> None
 
     // A timestamp without an offset means UTC, matching journal timestamps.
-    let private timestamp name context =
-        value name context
-        |> Option.bind (fun text ->
-            match
-                DateTimeOffset.TryParse(
-                    text,
-                    CultureInfo.InvariantCulture,
-                    DateTimeStyles.AssumeUniversal ||| DateTimeStyles.AdjustToUniversal
-                )
-            with
-            | true, parsed -> Some parsed
-            | _ -> None)
+    let private timestamp (text: string) =
+        match
+            DateTimeOffset.TryParse(
+                text,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal ||| DateTimeStyles.AdjustToUniversal
+            )
+        with
+        | true, parsed -> Some parsed
+        | _ -> None
 
     let private relativeTime (value: string) =
         if value.Length < 2 then
@@ -48,53 +44,108 @@ module Web =
         else
             let number = value.Substring(0, value.Length - 1)
 
-            match Double.TryParse number, value[value.Length - 1] with
-            | (true, amount), 'm' -> Some(DateTimeOffset.UtcNow.AddMinutes(-amount))
-            | (true, amount), 'h' -> Some(DateTimeOffset.UtcNow.AddHours(-amount))
-            | (true, amount), 'd' -> Some(DateTimeOffset.UtcNow.AddDays(-amount))
+            match Double.TryParse(number, NumberStyles.Float, CultureInfo.InvariantCulture) with
+            | true, amount when Double.IsFinite amount && amount > 0. ->
+                try
+                    match value[value.Length - 1] with
+                    | 'm' -> Some(DateTimeOffset.UtcNow.AddMinutes(-amount))
+                    | 'h' -> Some(DateTimeOffset.UtcNow.AddHours(-amount))
+                    | 'd' -> Some(DateTimeOffset.UtcNow.AddDays(-amount))
+                    | _ -> None
+                with
+                | :? ArgumentOutOfRangeException
+                | :? OverflowException -> None
             | _ -> None
 
-    let query (context: HttpContext) =
-        let textQuery =
-            value "q" context
-            |> Option.map (fun text -> Query.parseText text Query.empty)
-            |> Option.defaultValue Query.empty
-
-        let since =
-            match value "range" context with
-            | Some range -> relativeTime range
-            | None -> timestamp "since" context
-
-        { textQuery with
-            Hostname = value "host" context |> Option.orElse textQuery.Hostname
-            Application = value "app" context |> Option.orElse textQuery.Application
-            Unit = value "unit" context |> Option.orElse textQuery.Unit
-            Source = value "source" context |> Option.orElse textQuery.Source
-            BootId = value "boot" context |> Option.orElse textQuery.BootId
-            Facility = integer "facility" context |> Option.orElse textQuery.Facility
-            Severity =
-                value "severity" context
-                |> Option.bind Query.numericFilter
-                |> Option.orElse textQuery.Severity
-            Since = since
-            Until = timestamp "until" context
-            Before = value "before" context
-            Limit = integer "limit" context |> Option.defaultValue 200
-        }
-
-    let private logs (reader: JournalReader) (context: HttpContext) =
-        let parsed = query context
-        let items = reader.Search parsed
-        let limit = Math.Clamp(parsed.Limit, 1, 1000)
-
-        // A full page may have more entries; the reader does not check ahead.
-        let next =
-            if items.Length = limit then
-                items |> List.tryLast |> Option.map _.Cursor
-            else
+    let private validated name parser (errors: ResizeArray<string>) context =
+        match value name context with
+        | None -> None
+        | Some text ->
+            match parser text with
+            | Some parsed -> Some parsed
+            | None ->
+                errors.Add($"invalid {name}")
                 None
 
-        Response.ofJsonOptions jsonOptions {| items = items; nextBefore = next |} context
+    let query (context: HttpContext) =
+        let errors = ResizeArray<string>()
+
+        let textQuery =
+            match value "q" context with
+            | None -> Query.empty
+            | Some text ->
+                match Query.parseText text Query.empty with
+                | Ok parsed -> parsed
+                | Error error ->
+                    errors.Add error
+                    Query.empty
+
+        let range = validated "range" relativeTime errors context
+        let since = validated "since" timestamp errors context
+        let until = validated "until" timestamp errors context
+
+        let facility = validated "facility" Query.facilityValue errors context
+
+        let severity = validated "severity" Query.numericFilter errors context
+
+        let before =
+            validated "before" (fun text -> Cursor.decode text |> Option.map (fun _ -> text)) errors context
+
+        let limit =
+            validated "limit" (fun text -> integer text |> Option.filter (fun n -> n >= 1 && n <= 1000)) errors context
+
+        if errors.Count > 0 then
+            Error(String.concat "; " errors)
+        else
+            Ok
+                { textQuery with
+                    Hostname = value "host" context |> Option.orElse textQuery.Hostname
+                    Application = value "app" context |> Option.orElse textQuery.Application
+                    Unit = value "unit" context |> Option.orElse textQuery.Unit
+                    Source = value "source" context |> Option.orElse textQuery.Source
+                    BootId = value "boot" context |> Option.orElse textQuery.BootId
+                    Facility = facility |> Option.orElse textQuery.Facility
+                    Severity = severity |> Option.orElse textQuery.Severity
+                    Since = range |> Option.orElse since
+                    Until = until
+                    Before = before
+                    Limit = limit |> Option.defaultValue 200
+                }
+
+    let private badRequest message (context: HttpContext) =
+        context.Response.StatusCode <- StatusCodes.Status400BadRequest
+        context.Response.ContentType <- "text/plain; charset=utf-8"
+        context.Response.WriteAsync(message)
+
+    let private logs (reader: JournalReader) (context: HttpContext) =
+        match query context with
+        | Error message -> badRequest message context
+        | Ok parsed ->
+            let liveSince = DateTimeOffset.UtcNow
+
+            let liveAfter =
+                reader.Search { Query.empty with Limit = 1 }
+                |> List.tryHead
+                |> Option.map _.Cursor
+
+            let items = reader.Search parsed
+
+            // A full page may have more entries; the reader does not check ahead.
+            let next =
+                if items.Length = parsed.Limit then
+                    items |> List.tryLast |> Option.map _.Cursor
+                else
+                    None
+
+            Response.ofJsonOptions
+                jsonOptions
+                {|
+                    items = items
+                    nextBefore = next
+                    liveAfter = liveAfter
+                    liveSince = liveSince
+                |}
+                context
 
     let private status (reader: JournalReader) context =
         Response.ofJsonOptions
@@ -105,39 +156,96 @@ module Web =
             |}
             context
 
-    let private stream (stopping: CancellationToken) (live: LiveHub) (context: HttpContext) : Task =
-        task {
-            context.Response.StatusCode <- StatusCodes.Status200OK
-            context.Response.ContentType <- "text/event-stream"
-            context.Response.Headers.CacheControl <- "no-cache"
-            context.Response.Headers.Connection <- "keep-alive"
-            // Flush headers so EventSource opens before the first entry arrives.
-            do! context.Response.Body.FlushAsync(context.RequestAborted)
+    let private resume (context: HttpContext) =
+        let errors = ResizeArray<string>()
 
-            // Stop an open stream when the host stops, even if the client stays connected.
-            use linked =
-                CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, stopping)
+        let after =
+            validated "after" (fun text -> Cursor.decode text |> Option.map (fun _ -> text)) errors context
 
-            let token = linked.Token
-            let subscription = live.Subscribe()
-            let filter = query context
+        let fromTime = validated "from" timestamp errors context
+        let header = context.Request.Headers["Last-Event-ID"].ToString()
 
-            try
-                while not token.IsCancellationRequested do
-                    let! entry = subscription.Reader.ReadAsync(token)
+        let lastEventId =
+            if String.IsNullOrWhiteSpace header then
+                None
+            elif Cursor.decode header |> Option.isSome then
+                Some header
+            else
+                errors.Add("invalid Last-Event-ID")
+                None
 
-                    if Query.matches filter entry then
-                        let json = JsonSerializer.Serialize(entry, jsonOptions)
-                        do! context.Response.WriteAsync($"data: {json}\n\n", token)
+        if errors.Count > 0 then
+            Error(String.concat "; " errors)
+        else
+            Ok(lastEventId |> Option.orElse after, fromTime)
+
+    let private stream
+        (stopping: CancellationToken)
+        (reader: JournalReader)
+        (live: LiveHub)
+        (context: HttpContext)
+        : Task =
+        match query context, resume context with
+        | Error message, _
+        | _, Error message -> badRequest message context
+        | Ok filter, Ok(initialCursor, fromTime) ->
+            task {
+                let startedAt = fromTime |> Option.defaultValue DateTimeOffset.UtcNow
+
+                use linked =
+                    CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, stopping)
+
+                let token = linked.Token
+                let subscription = live.Subscribe()
+                let mutable checkpoint = initialCursor
+
+                let replay () =
+                    task {
+                        let mutable more = true
+
+                        while more && not token.IsCancellationRequested do
+                            let scan =
+                                { Query.empty with
+                                    Before = checkpoint
+                                    Since = if checkpoint.IsNone then Some startedAt else None
+                                    Limit = 1000
+                                }
+
+                            let entries = reader.Forward scan
+
+                            for entry in entries do
+                                checkpoint <- Some entry.Cursor
+
+                                if Query.matches filter entry then
+                                    let json = JsonSerializer.Serialize(entry, jsonOptions)
+                                    do! context.Response.WriteAsync($"id: {entry.Cursor}\ndata: {json}\n\n", token)
+                                    do! context.Response.Body.FlushAsync(token)
+
+                            more <- entries.Length = scan.Limit
+                    }
+
+                try
+                    try
+                        context.Response.StatusCode <- StatusCodes.Status200OK
+                        context.Response.ContentType <- "text/event-stream"
+                        context.Response.Headers.CacheControl <- "no-cache"
+                        // Flush headers so EventSource opens before the first entry arrives.
                         do! context.Response.Body.FlushAsync(token)
-            finally
-                subscription.Dispose()
-        }
-        :> Task
+                        do! replay ()
+
+                        while not token.IsCancellationRequested do
+                            let! _ = subscription.Reader.ReadAsync(token)
+                            do! replay ()
+                    with :? OperationCanceledException when token.IsCancellationRequested ->
+                        ()
+                finally
+                    subscription.Dispose()
+            }
+            :> Task
 
     let endpoints stopping reader live =
         [
             get "/api/logs" (logs reader)
-            get "/api/tail" (stream stopping live)
+            get "/api/tail" (stream stopping reader live)
             get "/api/status" (status reader)
         ]

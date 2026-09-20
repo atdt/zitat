@@ -75,7 +75,9 @@ local journal (`omjournal`), which lands under the same tree.
 
 ## Search API
 
-`GET /api/logs` returns newest-first results.
+`GET /api/logs` returns newest-first results. Its `liveAfter` cursor marks the
+newest entry at the start of the search; `liveSince` supplies a timestamp when
+the journal is empty. Use one of them to start `/api/tail` without a gap.
 
 | Parameter | Meaning |
 |---|---|
@@ -85,11 +87,11 @@ local journal (`omjournal`), which lands under the same tree.
 | `unit` | `_SYSTEMD_UNIT` |
 | `boot` | `_BOOT_ID` |
 | `source` | Sending host, from the journal file name |
-| `facility` | `SYSLOG_FACILITY`, 0 through 23 |
+| `facility` | `SYSLOG_FACILITY`, 0 through 23 or a standard name |
 | `severity` | `PRIORITY` 0 through 7, optionally compared |
 | `since` | Inclusive ISO 8601 timestamp |
 | `until` | Inclusive ISO 8601 timestamp |
-| `range` | Relative range such as `15m`, `6h`, or `7d` |
+| `range` | Positive relative range such as `15m`, `6h`, or `7d` |
 | `before` | Cursor from a previous page's `nextBefore` |
 | `limit` | Page size from 1 through 1000; default 200 |
 
@@ -105,7 +107,12 @@ Severity counts down from 0, so `severity:<=3` means error and worse.
 journal's own hash index, which is a hash over the stored bytes; `host:imp` and
 `host:IMP` are different lookups. This matches `journalctl _HOSTNAME=imp`.
 
-`GET /api/tail` is the same query as a Server-Sent Events stream.
+Invalid filter values return HTTP 400 instead of removing the filter.
+
+`GET /api/tail` accepts the same filters as a Server-Sent Events stream. Pass
+`liveAfter` as `after`, or `liveSince` as `from` when `liveAfter` is null. Each
+event includes its journal cursor as an SSE ID. On reconnection, `Last-Event-ID`
+overrides `after`; the server replays retained entries after that cursor.
 `GET /api/status` reports the files, entry count and senders currently visible.
 
 ## Journal format support

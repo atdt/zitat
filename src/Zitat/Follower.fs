@@ -8,10 +8,8 @@ open Microsoft.Extensions.Hosting
 open Microsoft.Extensions.Logging
 open Zitat.Journal
 
-/// Reads entries appended to journal files and publishes them to the live hub.
-/// The cursor starts at the newest existing entry and advances after publication.
-type JournalFollower
-    (options: ZitatOptions, set: JournalSet, reader: JournalReader, live: LiveHub, logger: ILogger<JournalFollower>) =
+/// Refreshes the journal file set and notifies live subscribers after each scan.
+type JournalFollower(options: ZitatOptions, set: JournalSet, live: LiveHub, logger: ILogger<JournalFollower>) =
     inherit BackgroundService()
 
     let changed = new SemaphoreSlim(0, 1)
@@ -36,38 +34,13 @@ type JournalFollower
             watcher.Error.Add(fun error -> logger.LogWarning(error.GetException(), "journal watch failed"))
             watcher.EnableRaisingEvents <- true
 
-            let startedAt = DateTimeOffset.UtcNow
-
-            // Start at the newest entry so subscribers see what arrives from
-            // now on, not the whole retained history.
-            let mutable checkpointCursor =
-                reader.Search { Query.empty with Limit = 1 }
-                |> List.tryHead
-                |> Option.map _.Cursor
-
             while not token.IsCancellationRequested do
                 try
                     set.Refresh()
-
-                    let query =
-                        match checkpointCursor with
-                        | Some position ->
-                            { Query.empty with
-                                Before = Some position
-                                Limit = 1000
-                            }
-                        | None ->
-                            { Query.empty with
-                                Since = Some startedAt
-                                Limit = 1000
-                            }
-
-                    for entry in reader.Forward query do
-                        live.Publish entry
-                        checkpointCursor <- Some entry.Cursor
+                    live.Notify()
                 with
                 | :? OperationCanceledException -> ()
-                | error -> logger.LogError(error, "journal tail failed")
+                | error -> logger.LogError(error, "journal refresh failed")
 
                 try
                     let! _ = changed.WaitAsync(pollInterval, token)

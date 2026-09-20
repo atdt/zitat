@@ -9,6 +9,9 @@ const notice = document.querySelector('#notice');
 const template = document.querySelector('#row');
 let cursor = null;
 let stream = null;
+let liveAfter = null;
+let liveSince = null;
+let requestId = 0;
 
 const severityNames = ['emerg', 'alert', 'crit', 'err', 'warning', 'notice', 'info', 'debug'];
 const facilityNames = [
@@ -80,16 +83,23 @@ function render(item, prepend = false) {
 }
 
 async function load(append = false) {
+  const id = requestId;
   const params = parameters();
   if (append && cursor) params.set('before', cursor);
   const response = await fetch(`/api/logs?${params}`);
   if (!response.ok) throw new Error(`Search failed: HTTP ${response.status}`);
   const page = await response.json();
+  if (id !== requestId) return null;
   if (!append) list.replaceChildren();
   page.items.forEach(item => render(item));
   cursor = page.nextBefore;
+  if (!append) {
+    liveAfter = page.liveAfter;
+    liveSince = page.liveSince;
+  }
   older.hidden = !cursor || page.items.length === 0;
   empty.style.display = list.children.length ? 'none' : 'block';
+  return page;
 }
 
 async function showSummary() {
@@ -105,21 +115,33 @@ async function showSummary() {
 
 function connect() {
   if (stream) stream.close();
-  stream = new EventSource(`/api/tail?${parameters()}`);
+  const params = parameters();
+  if (liveAfter) params.set('after', liveAfter);
+  else if (liveSince) params.set('from', liveSince);
+  stream = new EventSource(`/api/tail?${params}`);
   stream.onmessage = event => {
+    liveAfter = event.lastEventId;
     render(JSON.parse(event.data), true);
     empty.style.display = 'none';
   };
   stream.onerror = () => { notice.textContent = 'Live connection interrupted; reconnecting.'; };
   stream.onopen = () => { showSummary(); };
   liveButton.textContent = 'Pause';
+  liveButton.disabled = false;
 }
 
-function refresh() {
+async function refresh() {
+  const id = ++requestId;
+  if (stream) { stream.close(); stream = null; }
+  liveButton.disabled = true;
   const params = parameters();
   history.replaceState(null, '', params.size ? `?${params}` : '/');
-  load().catch(error => { notice.textContent = error.message; });
-  connect();
+  try {
+    const page = await load();
+    if (id === requestId && page) connect();
+  } catch (error) {
+    if (id === requestId) notice.textContent = error.message;
+  }
 }
 
 form.onsubmit = event => { event.preventDefault(); refresh(); };
@@ -132,6 +154,5 @@ liveButton.onclick = () => {
 const initial = new URLSearchParams(location.search);
 search.value = initial.get('q') || '';
 range.value = initial.get('range') ?? '1h';
-load().catch(error => { notice.textContent = error.message; });
 showSummary();
-connect();
+refresh();
