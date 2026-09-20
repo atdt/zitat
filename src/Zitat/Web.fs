@@ -177,6 +177,55 @@ module Web =
 
         finish errors (lastEventId |> Option.orElse after, fromTime)
 
+    // Writes every entry after `checkpoint` matching `filter` as an SSE
+    // event, batching reads from the journal, and returns the cursor to
+    // resume from on the next call.
+    let private replayEntries
+        (reader: JournalReader)
+        (filter: LogQuery)
+        (context: HttpContext)
+        (token: CancellationToken)
+        (startedAt: DateTimeOffset)
+        (checkpoint: string option)
+        : Task<string option> =
+        task {
+            let mutable checkpoint = checkpoint
+            let mutable more = true
+
+            while more && not token.IsCancellationRequested do
+                let scan =
+                    { Query.empty with
+                        Before = checkpoint
+                        Since = if checkpoint.IsNone then Some startedAt else None
+                        Limit = 1000
+                    }
+
+                let entries = reader.Forward scan
+                let mutable wrote = false
+
+                for entry in entries do
+                    checkpoint <- Some entry.Cursor
+
+                    if Query.matches filter entry then
+                        let json = JsonSerializer.Serialize(entry, jsonOptions)
+
+                        do!
+                            context.Response.WriteAsync(
+                                $"id: {entry.Cursor}\ndata: {json}\n\n",
+                                token
+                            )
+
+                        wrote <- true
+
+                // Flush once per batch.
+                if wrote then
+                    do! context.Response.Body.FlushAsync(token)
+
+                more <- entries.Length = scan.Limit
+
+            return checkpoint
+        }
+
     let private stream
         (stopping: CancellationToken)
         (reader: JournalReader)
@@ -198,43 +247,6 @@ module Web =
 
                 let token = linked.Token
                 let subscription = live.Subscribe()
-                let mutable checkpoint = initialCursor
-
-                let replay () =
-                    task {
-                        let mutable more = true
-
-                        while more && not token.IsCancellationRequested do
-                            let scan =
-                                { Query.empty with
-                                    Before = checkpoint
-                                    Since = if checkpoint.IsNone then Some startedAt else None
-                                    Limit = 1000
-                                }
-
-                            let entries = reader.Forward scan
-                            let mutable wrote = false
-
-                            for entry in entries do
-                                checkpoint <- Some entry.Cursor
-
-                                if Query.matches filter entry then
-                                    let json = JsonSerializer.Serialize(entry, jsonOptions)
-
-                                    do!
-                                        context.Response.WriteAsync(
-                                            $"id: {entry.Cursor}\ndata: {json}\n\n",
-                                            token
-                                        )
-
-                                    wrote <- true
-
-                            // Flush once per batch.
-                            if wrote then
-                                do! context.Response.Body.FlushAsync(token)
-
-                            more <- entries.Length = scan.Limit
-                    }
 
                 try
                     try
@@ -243,11 +255,19 @@ module Web =
                         context.Response.Headers.CacheControl <- "no-cache"
                         // EventSource waits for response headers before it opens.
                         do! context.Response.Body.FlushAsync(token)
-                        do! replay ()
+
+                        let! checkpoint =
+                            replayEntries reader filter context token startedAt initialCursor
+
+                        let mutable checkpoint = checkpoint
 
                         while not token.IsCancellationRequested do
                             let! _ = subscription.Reader.ReadAsync(token)
-                            do! replay ()
+
+                            let! next =
+                                replayEntries reader filter context token startedAt checkpoint
+
+                            checkpoint <- next
                     with :? OperationCanceledException when token.IsCancellationRequested ->
                         ()
                 finally
