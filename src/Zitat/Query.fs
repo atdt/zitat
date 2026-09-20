@@ -154,7 +154,7 @@ module Query =
 
             { parsed with Text = text })
 
-    /// Keep exact-value matching case-sensitive to agree with the journal index.
+    // Match fields case-sensitively to agree with indexed search.
     let matches (query: LogQuery) (entry: LogEntry) =
         let same expected actual =
             expected |> Option.forall (fun value -> actual = Some value)

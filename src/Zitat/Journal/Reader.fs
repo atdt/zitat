@@ -6,8 +6,6 @@ open System.IO
 open System.Text
 open Zitat
 
-/// Journal field names this reader gives first-class meaning to. Everything
-/// else an entry carries is preserved in LogEntry.Fields.
 module Fields =
     [<Literal>]
     let Message = "MESSAGE"
@@ -34,12 +32,11 @@ module Fields =
     let BootId = "_BOOT_ID"
 
 module private Clock =
-    /// Journal timestamps are microseconds since the Unix epoch; a tick is
-    /// 100ns.
+    // A journal microsecond equals ten DateTimeOffset ticks.
     let toInstant (microseconds: uint64) =
         DateTimeOffset.UnixEpoch.AddTicks(int64 microseconds * 10L)
 
-    // Round bounds inward to exclude entries outside the requested range.
+    // Floor until and ceil since to the journal's microsecond precision.
     let upperBound (instant: DateTimeOffset) =
         let ticks = (instant - DateTimeOffset.UnixEpoch).Ticks
         if ticks <= 0L then 0UL else uint64 ticks / 10UL
@@ -48,9 +45,9 @@ module private Clock =
         let ticks = (instant - DateTimeOffset.UnixEpoch).Ticks
         if ticks <= 0L then 0UL else uint64 ((ticks + 9L) / 10L)
 
-/// An opaque position in the merged stream: the writing file's sequence
-/// number identity, its sequence number, and the entry's timestamp.
 module Cursor =
+    // The sequence ID breaks ties across writers with equal timestamps and
+    // sequence numbers.
     let order (seqnumId: byte[]) (seqnum: uint64) (realtime: uint64) = realtime, seqnum, seqnumId
 
     let encode (seqnumId: byte[]) (seqnum: uint64) (realtime: uint64) =
@@ -75,10 +72,8 @@ module Cursor =
         with :? FormatException ->
             None
 
-/// The sender a journal file holds. systemd-journal-remote names files after
-/// the source it received them from, and rotation appends an @-suffix, so the
-/// sender is the filename up to the first `@`.
 module Source =
+    // systemd-journal-remote uses remote-<sender>[@...].journal filenames.
     let ofPath (path: string) =
         let name =
             Path.GetFileNameWithoutExtension path |> Option.ofObj |> Option.defaultValue ""
@@ -90,12 +85,8 @@ module Source =
 
         if stem.StartsWith "remote-" then stem.Substring 7 else stem
 
-/// The journal files under a directory, kept open and memory-mapped.
-///
-/// A file systemd is still writing grows in place, so refreshing remaps any
-/// file whose length has changed and picks up files that rotation has created.
-/// Unmapping a file while another thread is reading it can cause a
-/// segmentation fault, so refreshing and reading are serialised.
+/// Refresh and Use share a lock because unmapping a file during a read can
+/// crash the process.
 [<Sealed>]
 type JournalSet(root: string, log: string -> unit) =
     let files = Dictionary<string, JournalFile>()
@@ -135,16 +126,11 @@ type JournalSet(root: string, log: string -> unit) =
                     try
                         files[path] <- JournalFile.Open path
                     with
-                    // A file whose format we do not implement is fatal by
-                    // design: reading it with the wrong assumptions would show
-                    // wrong logs rather than none.
+                    // Abort refresh so unsupported formats are not silently omitted.
                     | UnsupportedJournal _ -> reraise ()
-                    // Corruption is expected rather than exceptional, and the
-                    // format requires readers to degrade around it. A file being
-                    // created right now also lands here.
+                    // Skip corrupt files so other files remain readable.
                     | CorruptJournal(path, reason) -> log $"skipping %s{path}: %s{reason}")
 
-    /// Runs `action` against the open files with the set held still.
     member _.Use(action: JournalFile list -> 'a) =
         lock gate (fun () -> action (files.Values |> Seq.sortBy _.Path |> List.ofSeq))
 
@@ -166,9 +152,7 @@ type JournalReader(set: JournalSet) =
         | at ->
             Encoding.UTF8.GetString(payload, 0, at), Encoding.UTF8.GetString(payload, at + 1, payload.Length - at - 1)
 
-    /// The DATA objects a query's exact-value filters resolve to in one file.
-    /// Returns None when a filter names a value this file never recorded, in
-    /// which case the file cannot contribute a single entry.
+    // An indexed value absent from this file rules out the file.
     let termsFor (file: JournalFile) (query: LogQuery) =
         let single field value =
             match value with
@@ -231,8 +215,7 @@ type JournalReader(set: JournalSet) =
                 | _ -> None)
             (Some [])
 
-    /// Translates a timestamp bound into an entry offset within one file.
-    /// `None` means the file holds nothing on the wanted side of the bound.
+    // None excludes the file. Some ValueNone leaves the scan unbounded.
     let boundFor (file: JournalFile) (direction: Direction) (limit: uint64 option) =
         match limit with
         | None -> Some ValueNone
@@ -298,7 +281,6 @@ type JournalReader(set: JournalSet) =
             Fields = fields
         }
 
-    /// The sequence ID breaks realtime and sequence-number ties across writers.
     member private _.Collect(query: LogQuery, direction: Direction) =
         set.Use(fun openFiles ->
             let limit = Math.Clamp(query.Limit, 1, 1000)
@@ -311,8 +293,7 @@ type JournalReader(set: JournalSet) =
             let sinceUsec = query.Since |> Option.map Clock.lowerBound
             let untilUsec = query.Until |> Option.map Clock.upperBound
 
-            // A cursor tightens the bound that iteration starts from: paging back
-            // resumes below its timestamp, tailing resumes above it.
+            // The cursor timestamp narrows the scan before the full cursor is compared.
             let cursorRealtime = cursor |> Option.map (fun (_, _, realtime) -> realtime)
 
             let upper =
@@ -397,8 +378,7 @@ type JournalReader(set: JournalSet) =
                         | _ -> false
 
                     if past then
-                        // Entries only get further from the bound from here, so
-                        // this file is finished rather than merely skipped.
+                        // This scan is time-ordered and cannot re-enter the range.
                         heads[chosen] <- ValueNone
                     else
                         let afterCursor =
@@ -414,10 +394,10 @@ type JournalReader(set: JournalSet) =
 
             List.ofSeq results)
 
-    /// Matching entries, newest first.
+    /// Returns matching entries newest first.
     member this.Search(query: LogQuery) = this.Collect(query, Newest)
 
-    /// Matching entries, oldest first. A cursor resumes after that entry.
+    /// Returns matching entries oldest first, after Before when supplied.
     member this.Forward(query: LogQuery) = this.Collect(query, Oldest)
 
     member _.Status() =
