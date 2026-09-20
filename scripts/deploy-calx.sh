@@ -1,6 +1,10 @@
 #!/bin/sh
 # Builds Zitat and deploys it to calx, listening on the tailnet interface.
 #
+# calx is the maintainer's own test host, not a generic deploy target;
+# this script is specific to it and is not meant to be reused as-is
+# for another host.
+#
 # calx is not config-managed for this app; this script owns the app
 # directory (/opt/zitat) plus two host-level files it installs the first
 # time it runs: /etc/systemd/system/zitat.service and /etc/zitat.env. Any
