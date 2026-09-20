@@ -4,6 +4,7 @@ open System
 open System.Globalization
 open System.Text.Json
 open System.Text.Json.Serialization
+open System.Threading
 open System.Threading.Tasks
 open Falco
 open Falco.Routing
@@ -104,7 +105,12 @@ module Web =
             |}
             context
 
-    let private stream (live: LiveHub) (context: HttpContext) : Task =
+    // context.RequestAborted only fires when the client disconnects or when
+    // Kestrel force-aborts connections at the end of the host's shutdown
+    // grace period (30 seconds by default). Without also watching for the
+    // application stopping, every open tail outlives its usefulness and
+    // holds the process up for that entire grace period on every restart.
+    let private stream (stopping: CancellationToken) (live: LiveHub) (context: HttpContext) : Task =
         task {
             context.Response.StatusCode <- StatusCodes.Status200OK
             context.Response.ContentType <- "text/event-stream"
@@ -113,26 +119,31 @@ module Web =
             // Send the headers now so the client reports an open stream
             // before the first matching entry arrives.
             do! context.Response.Body.FlushAsync(context.RequestAborted)
+
+            use linked =
+                CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, stopping)
+
+            let token = linked.Token
             let subscription = live.Subscribe()
             let filter = query context
 
             try
-                while not context.RequestAborted.IsCancellationRequested do
-                    let! entry = subscription.Reader.ReadAsync(context.RequestAborted)
+                while not token.IsCancellationRequested do
+                    let! entry = subscription.Reader.ReadAsync(token)
 
                     if Query.matches filter entry then
                         let json = JsonSerializer.Serialize(entry, jsonOptions)
-                        do! context.Response.WriteAsync($"data: {json}\n\n")
-                        do! context.Response.Body.FlushAsync(context.RequestAborted)
+                        do! context.Response.WriteAsync($"data: {json}\n\n", token)
+                        do! context.Response.Body.FlushAsync(token)
             finally
                 subscription.Dispose()
         }
         :> Task
 
-    let endpoints reader live =
+    let endpoints stopping reader live =
         [
             get "/api/logs" (logs reader)
-            get "/api/tail" (stream live)
+            get "/api/tail" (stream stopping live)
             get "/api/status" (status reader)
             get "/" (fun context -> context.Response.SendFileAsync("wwwroot/index.html"))
         ]

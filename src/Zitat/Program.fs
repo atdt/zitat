@@ -41,6 +41,7 @@ module Program =
 
         let reader = app.Services.GetRequiredService<JournalReader>()
         let live = app.Services.GetRequiredService<LiveHub>()
-        app.UseFalco(Web.endpoints reader live) |> ignore
+        let lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>()
+        app.UseFalco(Web.endpoints lifetime.ApplicationStopping reader live) |> ignore
         app.Run()
         0
