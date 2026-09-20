@@ -17,6 +17,7 @@ run-demo:
 
 publish:
 	./scripts/publish-linux-arm64.sh
+	./scripts/publish-linux-x64.sh
 
 clean:
 	dotnet clean Zitat.slnx
