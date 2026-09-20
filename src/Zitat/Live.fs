@@ -18,7 +18,7 @@ type LiveHub() =
             subscriber.Writer.TryWrite(()) |> ignore
 
     member _.Subscribe() =
-        // Notifications coalesce; subscribers replay entries from the journal.
+        // One pending signal suffices because each wake-up replays from the journal.
         let options = BoundedChannelOptions(1)
         options.FullMode <- BoundedChannelFullMode.DropOldest
         options.SingleReader <- true
