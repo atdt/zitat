@@ -6,8 +6,10 @@ Wants=network-online.target
 [Service]
 Type=notify
 DynamicUser=yes
-# systemd-journal grants read access to local and remote journal files.
-SupplementaryGroups=systemd-journal
+# systemd-journal grants read access to local journal files.
+# systemd-journal-remote grants read access to journals received from
+# other hosts over the network (present only on log-aggregator hosts).
+SupplementaryGroups=systemd-journal systemd-journal-remote
 WorkingDirectory=/opt/zitat
 ExecStart=/opt/zitat/zitat
 Environment=ASPNETCORE_URLS=http://127.0.0.1:8080
