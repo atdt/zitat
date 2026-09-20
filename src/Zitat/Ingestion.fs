@@ -88,21 +88,31 @@ type StorageWriter(
 ) =
     inherit BackgroundService()
 
+    let drain () =
+        let mutable item = Unchecked.defaultof<PendingLogEntry>
+        while sink.Reader.TryRead(&item) do
+            try
+                let stored = database.Insert item
+                metrics.IncrementStored()
+                live.Publish stored
+            with error ->
+                metrics.IncrementStorageFailed()
+                logger.LogError(error, "Failed to store a syslog message")
+
     override _.ExecuteAsync(stoppingToken) =
         task {
-            while not stoppingToken.IsCancellationRequested do
-                let! available = sink.Reader.WaitToReadAsync(stoppingToken)
+            try
+                while not stoppingToken.IsCancellationRequested do
+                    let! available = sink.Reader.WaitToReadAsync(stoppingToken)
+                    if available then drain ()
+            with :? OperationCanceledException -> ()
 
-                if available then
-                    let mutable item = Unchecked.defaultof<PendingLogEntry>
-                    while sink.Reader.TryRead(&item) do
-                        try
-                            let stored = database.Insert item
-                            metrics.IncrementStored()
-                            live.Publish stored
-                        with error ->
-                            metrics.IncrementStorageFailed()
-                            logger.LogError(error, "Failed to store a syslog message")
+            // Whatever is still queued was already accepted from the network.
+            // The inner loop usually empties it before cancellation is
+            // observed, so this pass matters only when the loop exits with a
+            // backlog: a cancelled wait that raced a write, or a future change
+            // to the order hosted services stop in.
+            drain ()
         }
 
 module private SocketHelpers =

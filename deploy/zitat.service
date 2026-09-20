@@ -4,7 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=exec
+Type=notify
 DynamicUser=yes
 StateDirectory=zitat
 WorkingDirectory=/var/lib/zitat
@@ -12,8 +12,16 @@ ExecStart=/opt/zitat/zitat
 Environment=ASPNETCORE_URLS=http://127.0.0.1:8080
 Environment=Zitat__DatabasePath=/var/lib/zitat/zitat.db
 EnvironmentFile=-/etc/zitat.env
-Restart=on-failure
+# A hosted service that dies takes the host down with a clean exit, so
+# on-failure would leave the collector dead. Always restart.
+Restart=always
 RestartSec=5s
+
+# imp is a 2 GB, 4-core Raspberry Pi 4. Steady-state usage is well under
+# these caps; they exist to keep a flood or a leak from wedging the host.
+MemoryHigh=256M
+MemoryMax=384M
+CPUQuota=200%
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectHome=yes

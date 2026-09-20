@@ -1,6 +1,9 @@
 namespace Zitat.Tests
 
 open System
+open System.IO
+open System.Threading
+open Microsoft.Extensions.Logging.Abstractions
 open Xunit
 open Zitat
 
@@ -40,3 +43,34 @@ module IngestionTests =
         sink.Submit("source", "second")
 
         Assert.Equal(1L, metrics.FloodDropped)
+
+    [<Fact>]
+    let ``stopping stores a queued backlog`` () =
+        task {
+            let directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))
+            let database = Database(Path.Combine(directory, "test.db"))
+            database.Initialize()
+
+            try
+                let metrics = IngestMetrics()
+                let sink = IngestSink(options, metrics)
+                let writer =
+                    new StorageWriter(
+                        database,
+                        sink,
+                        LiveHub(),
+                        metrics,
+                        NullLogger<StorageWriter>.Instance
+                    )
+
+                do! writer.StartAsync CancellationToken.None
+                for index in 1 .. 500 do
+                    sink.Submit("source", $"<14>message {index}")
+                do! writer.StopAsync CancellationToken.None
+
+                Assert.Equal(500L, metrics.Stored)
+                Assert.Equal(500L, database.Count)
+            finally
+                Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools()
+                Directory.Delete(directory, true)
+        }

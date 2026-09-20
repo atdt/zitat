@@ -124,8 +124,8 @@ curl -N 'http://127.0.0.1:8080/api/tail?severity=3&range=1h'
 ```
 
 `GET /api/status` reports stored-message and byte counts. It also reports
-malformed input, rate-limit drops, full-queue drops, and storage failures.
-`GET /health` is the process health check.
+malformed input, rate-limit drops, full-queue drops, and storage failures. It
+queries the database on every call, so it doubles as the health check.
 
 ## Deployment
 

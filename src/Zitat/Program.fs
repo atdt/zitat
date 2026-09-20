@@ -9,6 +9,9 @@ module Program =
     [<EntryPoint>]
     let main args =
         let builder = WebApplication.CreateBuilder(args)
+        // Under systemd this switches the host to Type=notify readiness and
+        // prefixes log lines with journal priorities. It is a no-op elsewhere.
+        builder.Host.UseSystemd() |> ignore
         let options = Configuration.load builder.Configuration
         let database = Database(options.DatabasePath)
         database.Initialize()

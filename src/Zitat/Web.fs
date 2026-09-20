@@ -130,6 +130,5 @@ module Web =
         get "/api/logs" (logs database)
         get "/api/tail" (stream live)
         get "/api/status" (status database metrics)
-        get "/health" (Response.ofPlainText "ok")
         get "/" (fun context -> context.Response.SendFileAsync("wwwroot/index.html"))
     ]
