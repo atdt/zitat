@@ -15,6 +15,8 @@ type JournalFollower
     inherit BackgroundService()
 
     let changed = new SemaphoreSlim(0, 1)
+    // FileSystemWatcher can miss notifications; poll to recover.
+    let pollInterval = TimeSpan.FromSeconds 1.
 
     let signal () =
         if changed.CurrentCount = 0 then
@@ -68,7 +70,7 @@ type JournalFollower
                 | error -> logger.LogError(error, "journal tail failed")
 
                 try
-                    let! _ = changed.WaitAsync(options.TailInterval, token)
+                    let! _ = changed.WaitAsync(pollInterval, token)
                     ()
                 with :? OperationCanceledException ->
                     ()

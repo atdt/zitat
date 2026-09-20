@@ -33,7 +33,9 @@ command-line configuration. Environment variable names replace `:` with `__`.
 | Setting | Default | Meaning |
 |---|---|---|
 | `Zitat:JournalDirectory` | `/var/log/journal` | Root of the journal tree to read, searched recursively |
-| `Zitat:TailIntervalMilliseconds` | `1000` | Fallback poll interval when the filesystem reports no change |
+
+The sample [systemd unit](deploy/zitat.service) sets `Type=notify` so systemd
+waits for the readiness notification sent by `UseSystemd()` in `Program.fs`.
 
 Retention and disk limits belong to systemd, not to Zitat. Configure them in
 `journald.conf` and `journal-remote.conf`.

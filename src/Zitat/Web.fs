@@ -87,7 +87,7 @@ module Web =
         let items = reader.Search parsed
         let limit = Math.Clamp(parsed.Limit, 1, 1000)
 
-        // A full page implies there may be more; a short one is the end.
+        // A full page may have more entries; the reader does not check ahead.
         let next =
             if items.Length = limit then
                 items |> List.tryLast |> Option.map _.Cursor
@@ -105,21 +105,16 @@ module Web =
             |}
             context
 
-    // context.RequestAborted only fires when the client disconnects or when
-    // Kestrel force-aborts connections at the end of the host's shutdown
-    // grace period (30 seconds by default). Without also watching for the
-    // application stopping, every open tail outlives its usefulness and
-    // holds the process up for that entire grace period on every restart.
     let private stream (stopping: CancellationToken) (live: LiveHub) (context: HttpContext) : Task =
         task {
             context.Response.StatusCode <- StatusCodes.Status200OK
             context.Response.ContentType <- "text/event-stream"
             context.Response.Headers.CacheControl <- "no-cache"
             context.Response.Headers.Connection <- "keep-alive"
-            // Send the headers now so the client reports an open stream
-            // before the first matching entry arrives.
+            // Flush headers so EventSource opens before the first entry arrives.
             do! context.Response.Body.FlushAsync(context.RequestAborted)
 
+            // Stop an open stream when the host stops, even if the client stays connected.
             use linked =
                 CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, stopping)
 
@@ -145,5 +140,4 @@ module Web =
             get "/api/logs" (logs reader)
             get "/api/tail" (stream stopping live)
             get "/api/status" (status reader)
-            get "/" (fun context -> context.Response.SendFileAsync("wwwroot/index.html"))
         ]

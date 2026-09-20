@@ -11,8 +11,8 @@ module Program =
     [<EntryPoint>]
     let main args =
         let builder = WebApplication.CreateBuilder(args)
-        // Under systemd this switches the host to Type=notify readiness and
-        // prefixes log lines with journal priorities. It is a no-op elsewhere.
+        // Under systemd, send readiness and stopping notifications and use
+        // the systemd console log format.
         builder.Host.UseSystemd() |> ignore
         let options = Configuration.load builder.Configuration
 
@@ -24,8 +24,7 @@ module Program =
 
             let set =
                 new JournalSet(options.JournalDirectory, fun message -> logger.LogWarning message)
-            // Serve the first request against a populated set rather than an
-            // empty one.
+            // Populate the set before the host accepts requests.
             set.Refresh()
             set)
         |> ignore
