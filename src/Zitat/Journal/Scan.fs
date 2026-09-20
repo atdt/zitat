@@ -9,8 +9,8 @@ type Direction =
 
 /// A conjunction of disjunctions over DATA objects within one file: an entry
 /// matches when, for every term, it references at least one of that term's
-/// objects. `host:imp severity:<=3` becomes two terms, the second holding one
-/// object per admitted priority.
+/// objects. `host:iron severity:<=3` becomes two terms, the second holding
+/// one object per admitted priority.
 ///
 /// A term that resolved to no objects at all cannot match anything, which the
 /// planner detects before iterating.

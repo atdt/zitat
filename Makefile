@@ -1,4 +1,4 @@
-.PHONY: build test run run-corpus publish clean format format-check
+.PHONY: build test run run-demo publish clean format format-check
 
 build:
 	dotnet build Zitat.slnx
@@ -9,11 +9,10 @@ test:
 run:
 	dotnet run --project src/Zitat/Zitat.fsproj
 
-run-corpus:
-	@test -d "$(CURDIR)/testdata/journal" || { echo "testdata/journal is missing" >&2; exit 1; }
+run-demo:
 	@echo "Web UI: http://127.0.0.1:5080/"
 	ASPNETCORE_URLS=http://127.0.0.1:5080 \
-		Zitat__JournalDirectory="$(CURDIR)/testdata/journal" \
+		Zitat__JournalDirectory="$(CURDIR)/tests/Zitat.Tests/Corpus/journal" \
 		dotnet run --project src/Zitat/Zitat.fsproj
 
 publish:

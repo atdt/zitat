@@ -6,80 +6,53 @@ open Xunit
 open Zitat
 open Zitat.Journal
 
-/// Tests against a real journal tree. The corpus is a copy of a live host's
-/// /var/log/journal and is too large, and too personal, to keep in the
-/// repository, so these skip when it is absent. See README for how to supply
-/// one.
+/// Tests against a journal tree. Corpus/journal is a small, synthetic
+/// corpus checked into the repository, generated as described in its
+/// README.
 module Corpus =
-    let path =
-        let rec search (directory: DirectoryInfo option) =
-            match directory with
-            | None -> None
-            | Some current ->
-                let candidate = Path.Combine(current.FullName, "testdata", "journal")
-
-                if Directory.Exists candidate then
-                    Some candidate
-                else
-                    search (Option.ofObj current.Parent)
-
-        search (Some(DirectoryInfo(Directory.GetCurrentDirectory())))
-
-/// Marks a test that needs the corpus, and skips it when there is none.
-type CorpusFactAttribute() as this =
-    inherit FactAttribute()
-
-    do
-        if Corpus.path.IsNone then
-            this.Skip <- "no journal corpus under testdata/journal"
+    let path = Path.Combine(__SOURCE_DIRECTORY__, "Corpus", "journal")
 
 module CorpusTests =
     let private withReader (test: JournalReader -> unit) =
-        match Corpus.path with
-        | None -> ()
-        | Some root ->
-            use set = new JournalSet(root, ignore)
-            set.Refresh()
-            test (JournalReader set)
+        use set = new JournalSet(Corpus.path, ignore)
+        set.Refresh()
+        test (JournalReader set)
 
     /// The strongest check available without a second implementation: every
     /// field of every sampled entry is looked up by its own recomputed hash and
     /// must resolve to the very object the entry pointed at. It exercises
     /// siphash, the hash table, compact offsets and decompression at once.
-    [<CorpusFact>]
+    [<Fact>]
     let ``every field resolves to the object the entry references`` () =
-        match Corpus.path with
-        | None -> ()
-        | Some root ->
-            use set = new JournalSet(root, ignore)
-            set.Refresh()
+        use set = new JournalSet(Corpus.path, ignore)
+        set.Refresh()
 
-            let checkedFields =
-                set.Use(fun files ->
-                    let mutable count = 0
+        let checkedFields =
+            set.Use(fun files ->
+                let mutable count = 0
 
-                    for file in files do
-                        let chain = file.GlobalChain()
+                for file in files do
+                    let chain = file.GlobalChain()
 
-                        for index in 0L .. min 200L (chain.Count - 1L) do
-                            let entry = chain[index]
+                    for index in 0L .. min 200L (chain.Count - 1L) do
+                        let entry = chain[index]
 
-                            for item in 0L .. file.EntryItemCount entry - 1L do
-                                let dataOffset = file.EntryItem(entry, item)
-                                let payload = file.DataPayload dataOffset
+                        for item in 0L .. file.EntryItemCount entry - 1L do
+                            let dataOffset = file.EntryItem(entry, item)
+                            let payload = file.DataPayload dataOffset
 
-                                Assert.Equal(
-                                    ValueSome dataOffset,
-                                    file.FindData(ReadOnlySpan<byte> payload)
-                                )
+                            Assert.Equal(
+                                ValueSome dataOffset,
+                                file.FindData(ReadOnlySpan<byte> payload)
+                            )
 
-                                count <- count + 1
+                            count <- count + 1
 
-                    count)
+                count)
 
-            Assert.True(checkedFields > 1000, $"only %d{checkedFields} fields were checked")
+        Assert.True(checkedFields > 1000, $"only %d{checkedFields} fields were checked")
 
-    [<CorpusFact>]
+    [<Fact>]
     let ``results are newest first across every file`` () =
         withReader (fun reader ->
             let page = reader.Search { Query.empty with Limit = 500 }
@@ -89,7 +62,7 @@ module CorpusTests =
             |> List.pairwise
             |> List.iter (fun (newer, older) -> Assert.True(newer.Realtime >= older.Realtime)))
 
-    [<CorpusFact>]
+    [<Fact>]
     let ``paging visits each entry once`` () =
         withReader (fun reader ->
             let seen = Collections.Generic.HashSet<string>()
@@ -113,7 +86,7 @@ module CorpusTests =
 
             Assert.True(seen.Count > 500))
 
-    [<CorpusFact>]
+    [<Fact>]
     let ``the indexed host filter agrees with filtering a scan`` () =
         withReader (fun reader ->
             let page = reader.Search { Query.empty with Limit = 3000 }
@@ -140,7 +113,7 @@ module CorpusTests =
                     indexed |> List.map _.Cursor
                 ))
 
-    [<CorpusFact>]
+    [<Fact>]
     let ``severity filters admit only the severities asked for`` () =
         withReader (fun reader ->
             reader.Search
@@ -153,7 +126,7 @@ module CorpusTests =
                 | Some value -> Assert.True(value <= 3, $"severity %d{value} passed a <=3 filter")
                 | None -> failwith "an entry matched a severity filter without a severity"))
 
-    [<CorpusFact>]
+    [<Fact>]
     let ``text search matches the message it claims to`` () =
         withReader (fun reader ->
             let hits =
@@ -167,7 +140,7 @@ module CorpusTests =
             |> List.iter (fun entry ->
                 Assert.Contains("systemd", entry.Message, StringComparison.OrdinalIgnoreCase)))
 
-    [<CorpusFact>]
+    [<Fact>]
     let ``tailing forward retraces the page that walked backward`` () =
         withReader (fun reader ->
             let page = reader.Search { Query.empty with Limit = 60 }
@@ -184,7 +157,7 @@ module CorpusTests =
             let backward = page |> List.take 40 |> List.rev |> List.map _.Cursor
             Assert.Equal<string list>(backward, forward))
 
-    [<CorpusFact>]
+    [<Fact>]
     let ``forward replay crosses the reader page limit`` () =
         withReader (fun reader ->
             let recent = reader.Search { Query.empty with Limit = 1000 }
@@ -217,7 +190,7 @@ module CorpusTests =
             let actual = first @ second
             Assert.Equal<string list>(expected |> List.map _.Cursor, actual |> List.map _.Cursor))
 
-    [<CorpusFact>]
+    [<Fact>]
     let ``a time range excludes everything outside it`` () =
         withReader (fun reader ->
             let newest = reader.Search({ Query.empty with Limit = 1 }) |> List.head
@@ -232,7 +205,7 @@ module CorpusTests =
                 }
             |> List.iter (fun entry -> Assert.InRange(entry.Realtime, since, until)))
 
-    [<CorpusFact>]
+    [<Fact>]
     let ``since excludes an entry one tick before the bound`` () =
         withReader (fun reader ->
             let newest = reader.Search({ Query.empty with Limit = 1 }) |> List.head
@@ -246,7 +219,7 @@ module CorpusTests =
 
             Assert.Empty later)
 
-    [<CorpusFact>]
+    [<Fact>]
     let ``maximum cursor timestamp does not wrap the search bound`` () =
         withReader (fun reader ->
             let expected = reader.Search { Query.empty with Limit = 10 }

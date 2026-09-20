@@ -6,8 +6,6 @@ obj/
 .DS_Store
 artifacts/
 
-# Journal corpora copied from a live host: large, and real log data.
-testdata/
 systemd_*.orig.tar.gz
 
 # Local agent-tooling notes: machine-specific, not for the repo.

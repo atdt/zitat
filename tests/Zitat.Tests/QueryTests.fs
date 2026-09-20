@@ -14,34 +14,34 @@ module QueryTests =
         {
             Cursor = "cursor"
             Realtime = DateTimeOffset(2026, 9, 19, 12, 0, 0, TimeSpan.Zero)
-            Source = "100.91.171.10"
-            Hostname = Some "imp"
+            Source = "203.0.113.10"
+            Hostname = Some "iron"
             Application = Some "sshd"
             Unit = Some "ssh.service"
             ProcessId = Some "42"
             BootId = Some "7296587132114e25afcf42a4f4e6f6bf"
             Facility = Some 4
             Severity = Some 6
-            Message = "Accepted publickey for ori"
+            Message = "Accepted publickey for admin"
             Fields = []
         }
 
     [<Fact>]
     let ``text syntax separates filters from terms`` () =
-        let result = parse "host:imp app:sshd severity:5 \"publickey for ori\""
+        let result = parse "host:iron app:sshd severity:5 \"publickey for admin\""
 
-        Assert.Equal(Some "imp", result.Hostname)
+        Assert.Equal(Some "iron", result.Hostname)
         Assert.Equal(Some "sshd", result.Application)
         Assert.Equal(Some(Exactly 5), result.Severity)
-        Assert.Equal(Some "publickey for ori", result.Text)
+        Assert.Equal(Some "publickey for admin", result.Text)
 
     [<Fact>]
     let ``text syntax reads the journal-specific filters`` () =
-        let result = parse "unit:ssh.service boot:abc123 source:100.71.212.2"
+        let result = parse "unit:ssh.service boot:abc123 source:203.0.113.20"
 
         Assert.Equal(Some "ssh.service", result.Unit)
         Assert.Equal(Some "abc123", result.BootId)
-        Assert.Equal(Some "100.71.212.2", result.Source)
+        Assert.Equal(Some "203.0.113.20", result.Source)
         Assert.Equal(None, result.Text)
 
     [<Fact>]
@@ -103,7 +103,7 @@ module QueryTests =
         Assert.True(
             Query.matches
                 { Query.empty with
-                    Hostname = Some "imp"
+                    Hostname = Some "iron"
                 }
                 entry
         )
@@ -111,7 +111,7 @@ module QueryTests =
         Assert.False(
             Query.matches
                 { Query.empty with
-                    Hostname = Some "IMP"
+                    Hostname = Some "IRON"
                 }
                 entry
         )
