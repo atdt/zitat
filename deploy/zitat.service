@@ -19,12 +19,12 @@ EnvironmentFile=-/etc/zitat.env
 Restart=always
 RestartSec=5s
 
-# imp is a 2 GB, 4-core Raspberry Pi 4. Journal files are memory-mapped, so
-# most of the resident size is page cache the kernel can reclaim; these caps
-# bound the process itself.
-MemoryHigh=256M
-MemoryMax=384M
-CPUQuota=200%
+# Sized for a modest host (e.g. a 2 GB, 4-core single-board computer).
+# Journal files are memory-mapped, so most of the resident size is page
+# cache the kernel can reclaim. These caps bound the process itself.
+MemoryHigh=192M
+MemoryMax=256M
+CPUQuota=150%
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectHome=yes
