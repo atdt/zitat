@@ -20,8 +20,7 @@ module Program =
             let logger =
                 services.GetRequiredService<ILoggerFactory>().CreateLogger "Zitat.Journal"
 
-            let set =
-                new JournalSet(options.JournalDirectory, fun message -> logger.LogWarning message)
+            let set = new JournalSet(options.JournalDirectory, logger.LogWarning)
 
             // Load the journal before the host accepts requests.
             set.Refresh()

@@ -33,7 +33,7 @@ type EntryArrayChain
 
                 if capacity <= 0L then
                     raise (
-                        CorruptJournal(
+                        CorruptJournalException(
                             mapping.Path,
                             $"entry array at %d{arrayOffset} holds no items"
                         )
@@ -84,14 +84,20 @@ type EntryArrayChain
 
                 if segment < 0 then
                     raise (
-                        CorruptJournal(mapping.Path, $"entry index %d{index} is outside the chain")
+                        CorruptJournalException(
+                            mapping.Path,
+                            $"entry index %d{index} is outside the chain"
+                        )
                     )
 
                 let slot = found[segment]
 
                 if index - slot.Start >= slot.Count then
                     raise (
-                        CorruptJournal(mapping.Path, $"entry index %d{index} is outside the chain")
+                        CorruptJournalException(
+                            mapping.Path,
+                            $"entry index %d{index} is outside the chain"
+                        )
                     )
 
                 let position = slot.Items + (index - slot.Start) * width
@@ -102,8 +108,7 @@ type EntryArrayChain
                     int64 (mapping.ReadUInt64 position)
 
     /// Returns the first index with an offset at least `target`, or Count.
-    member this.LowerBoundOffset(target: int64) =
-        this.LowerBound((fun offset -> uint64 offset), uint64 target)
+    member this.LowerBoundOffset(target: int64) = this.LowerBound(uint64, uint64 target)
 
     /// Returns the first index with a key at least `target`, or Count.
     member this.LowerBound(keyOf: int64 -> uint64, target: uint64) =
@@ -157,7 +162,7 @@ type JournalFile private (mapping: Mapping) =
 
         try
             if mapping.ReadUInt64 0L <> Format.Signature then
-                raise (CorruptJournal(path, "missing LPKSHHRH signature"))
+                raise (CorruptJournalException(path, "missing LPKSHHRH signature"))
 
             let incompatible =
                 LanguagePrimitives.EnumOfValue<uint32, IncompatibleFlags>(mapping.ReadUInt32 12L)
@@ -166,7 +171,7 @@ type JournalFile private (mapping: Mapping) =
 
             if unknown <> IncompatibleFlags.None then
                 raise (
-                    UnsupportedJournal(
+                    UnsupportedJournalException(
                         path,
                         $"incompatible flags %A{unknown} are not implemented (file declares %A{incompatible})"
                     )
@@ -174,7 +179,7 @@ type JournalFile private (mapping: Mapping) =
 
             if not (incompatible.HasFlag IncompatibleFlags.KeyedHash) then
                 raise (
-                    UnsupportedJournal(
+                    UnsupportedJournalException(
                         path,
                         "file predates keyed hashing and would need the Jenkins lookup3 hash"
                     )
@@ -183,7 +188,9 @@ type JournalFile private (mapping: Mapping) =
             let headerSize = int64 (mapping.ReadUInt64 88L)
 
             if headerSize < Format.HeaderMinimumSize then
-                raise (CorruptJournal(path, $"header of %d{headerSize} bytes is too short"))
+                raise (
+                    CorruptJournalException(path, $"header of %d{headerSize} bytes is too short")
+                )
 
             new JournalFile(mapping)
         with _ ->
@@ -213,14 +220,17 @@ type JournalFile private (mapping: Mapping) =
     member private _.CheckObject(offset: int64, expected: byte) =
         if offset < headerSize || offset % Format.Alignment <> 0L then
             raise (
-                CorruptJournal(path, $"object offset %d{offset} is unaligned or inside the header")
+                CorruptJournalException(
+                    path,
+                    $"object offset %d{offset} is unaligned or inside the header"
+                )
             )
 
         let actual = mapping.ReadByte offset
 
         if actual <> expected then
             raise (
-                CorruptJournal(
+                CorruptJournalException(
                     path,
                     $"expected object type %d{expected} at %d{offset}, found %d{actual}"
                 )
@@ -235,7 +245,12 @@ type JournalFile private (mapping: Mapping) =
         | 2uy -> Lz4
         | 4uy -> Zstd
         | other ->
-            raise (CorruptJournal(path, $"object at %d{offset} has compression bits %d{other}"))
+            raise (
+                CorruptJournalException(
+                    path,
+                    $"object at %d{offset} has compression bits %d{other}"
+                )
+            )
 
     member this.DataPayload(offset: int64) : byte[] =
         this.CheckObject(offset, Format.ObjectType.Data)
@@ -243,14 +258,22 @@ type JournalFile private (mapping: Mapping) =
         let length = int (size - dataPayloadOffset)
 
         if length < 0 then
-            raise (CorruptJournal(path, $"data object at %d{offset} is smaller than its header"))
+            raise (
+                CorruptJournalException(
+                    path,
+                    $"data object at %d{offset} is smaller than its header"
+                )
+            )
 
         match this.Compression offset with
         | Uncompressed -> mapping.ToArray(offset + dataPayloadOffset, length)
         | Zstd -> Zstd.decompress (mapping.Span(offset + dataPayloadOffset, length))
         | other ->
             raise (
-                UnsupportedJournal(path, $"data object at %d{offset} uses %A{other} compression")
+                UnsupportedJournalException(
+                    path,
+                    $"data object at %d{offset} uses %A{other} compression"
+                )
             )
 
     member _.EntryRealtime(offset: int64) =
@@ -372,7 +395,10 @@ type JournalFile private (mapping: Mapping) =
 
                 if guard > 10_000 then
                     raise (
-                        CorruptJournal(path, $"hash chain in bucket %d{bucket} does not terminate")
+                        CorruptJournalException(
+                            path,
+                            $"hash chain in bucket %d{bucket} does not terminate"
+                        )
                     )
 
                 if mapping.ReadUInt64(candidate + Format.Data.Hash) = hash then

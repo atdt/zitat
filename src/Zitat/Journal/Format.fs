@@ -131,6 +131,6 @@ type FileState =
     | UnknownState of byte
 
 /// Report unsupported formats.
-exception UnsupportedJournal of path: string * reason: string
+exception UnsupportedJournalException of path: string * reason: string
 
-exception CorruptJournal of path: string * reason: string
+exception CorruptJournalException of path: string * reason: string

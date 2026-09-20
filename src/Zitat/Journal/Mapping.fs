@@ -28,7 +28,12 @@ type Mapping
         let length = FileInfo(path).Length
 
         if length < Format.HeaderMinimumSize then
-            raise (CorruptJournal(path, $"file is %d{length} bytes, shorter than a journal header"))
+            raise (
+                CorruptJournalException(
+                    path,
+                    $"file is %d{length} bytes, shorter than a journal header"
+                )
+            )
 
         let mapped =
             MemoryMappedFile.CreateFromFile(
@@ -50,7 +55,7 @@ type Mapping
     member private _.Address(offset: int64, size: int64) =
         if offset < 0L || size < 0L || offset > length - size then
             raise (
-                CorruptJournal(
+                CorruptJournalException(
                     path,
                     $"read of %d{size} bytes at offset %d{offset} lies outside the %d{length} byte file"
                 )

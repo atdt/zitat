@@ -133,11 +133,11 @@ type JournalSet(root: string, log: string -> unit) =
                         files[path] <- JournalFile.Open path
                     with
                     // Unsupported formats must be reported to the caller.
-                    | UnsupportedJournal _ -> reraise ()
+                    | UnsupportedJournalException _ -> reraise ()
                     // Ignore corrupt files.
-                    | CorruptJournal(path, reason) -> log $"skipping %s{path}: %s{reason}")
+                    | CorruptJournalException(path, reason) -> log $"skipping %s{path}: %s{reason}")
 
-    member _.Use(action: JournalFile list -> 'a) =
+    member _.Use(action: JournalFile list -> 'A) =
         lock gate (fun () -> action (files.Values |> Seq.sortBy _.Path |> List.ofSeq))
 
     interface IDisposable with
