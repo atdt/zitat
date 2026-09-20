@@ -47,64 +47,64 @@ module Query =
     let private named values (value: string) =
         values |> Map.tryFind (value.ToLowerInvariant())
 
+    let private severityNames =
+        Map
+            [
+                "emerg", 0
+                "emergency", 0
+                "alert", 1
+                "crit", 2
+                "critical", 2
+                "err", 3
+                "error", 3
+                "warn", 4
+                "warning", 4
+                "notice", 5
+                "info", 6
+                "informational", 6
+                "debug", 7
+            ]
+
+    let private facilityNames =
+        Map
+            [
+                "kern", 0
+                "kernel", 0
+                "user", 1
+                "mail", 2
+                "daemon", 3
+                "auth", 4
+                "security", 4
+                "syslog", 5
+                "lpr", 6
+                "news", 7
+                "uucp", 8
+                "clock", 9
+                "authpriv", 10
+                "ftp", 11
+                "ntp", 12
+                "audit", 13
+                "alert", 14
+                "clock2", 15
+                "local0", 16
+                "local1", 17
+                "local2", 18
+                "local3", 19
+                "local4", 20
+                "local5", 21
+                "local6", 22
+                "local7", 23
+            ]
+
     let private severityValue value =
         integer value
         |> Option.filter (fun number -> number >= 0 && number <= 7)
-        |> Option.orElseWith (fun () ->
-            named
-                (Map
-                    [
-                        "emerg", 0
-                        "emergency", 0
-                        "alert", 1
-                        "crit", 2
-                        "critical", 2
-                        "err", 3
-                        "error", 3
-                        "warn", 4
-                        "warning", 4
-                        "notice", 5
-                        "info", 6
-                        "informational", 6
-                        "debug", 7
-                    ])
-                value)
+        |> Option.orElseWith (fun () -> named severityNames value)
 
     let facilityValue value =
         integer value
         |> Option.filter (fun number -> number >= 0 && number <= 23)
-        |> Option.orElseWith (fun () ->
-            named
-                (Map
-                    [
-                        "kern", 0
-                        "kernel", 0
-                        "user", 1
-                        "mail", 2
-                        "daemon", 3
-                        "auth", 4
-                        "security", 4
-                        "syslog", 5
-                        "lpr", 6
-                        "news", 7
-                        "uucp", 8
-                        "clock", 9
-                        "authpriv", 10
-                        "ftp", 11
-                        "ntp", 12
-                        "audit", 13
-                        "alert", 14
-                        "clock2", 15
-                        "local0", 16
-                        "local1", 17
-                        "local2", 18
-                        "local3", 19
-                        "local4", 20
-                        "local5", 21
-                        "local6", 22
-                        "local7", 23
-                    ])
-                value)
+        |> Option.orElseWith (fun () -> named facilityNames value)
 
     let severityFilter (value: string) =
         let after (prefix: string) =

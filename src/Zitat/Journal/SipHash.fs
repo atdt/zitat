@@ -9,7 +9,7 @@ open System.Buffers.Binary
 module SipHash =
 
     let inline private rotl (value: uint64) (bits: int) =
-        (value <<< bits) ||| (value >>> (64 - bits))
+        System.Numerics.BitOperations.RotateLeft(value, bits)
 
     let inline private round
         (v0: byref<uint64>)

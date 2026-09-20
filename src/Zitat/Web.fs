@@ -42,7 +42,7 @@ module Web =
         if value.Length < 2 then
             None
         else
-            let number = value.Substring(0, value.Length - 1)
+            let number = value[.. value.Length - 2]
 
             match Double.TryParse(number, NumberStyles.Float, CultureInfo.InvariantCulture) with
             | true, amount when Double.IsFinite amount && amount > 0. ->
