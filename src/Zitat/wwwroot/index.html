@@ -11,7 +11,7 @@
     <form id="filters">
       <div class="brand">Zitat</div>
       <input id="search" name="q" type="search"
-             placeholder="Search logs; host:, app:, source:, facility:, severity:">
+             placeholder="Search logs; host:, app:, unit:, source:, boot:, facility:, severity:">
       <select id="range" name="range" aria-label="Time range">
         <option value="15m">Last 15 minutes</option>
         <option value="1h" selected>Last hour</option>
@@ -35,6 +35,7 @@
       <time></time>
       <button class="host field"></button>
       <button class="app field"></button>
+      <button class="unit field"></button>
       <button class="facility field"></button>
       <button class="severity field"></button>
       <span class="message"></span>

@@ -1,37 +1,81 @@
 # Design decisions
 
-## SQLite substring search
+## The journal is the datastore
 
-Zitat uses an indexed SQLite table for metadata and receive-time filters. Text
-search uses a case-insensitive substring comparison instead of SQLite FTS5.
-Substring behavior is predictable for punctuation-heavy log messages and does
-not require a parallel search index. It scans the candidate time range, which
-is acceptable for the specified volume and retention period.
+Zitat keeps no store of its own. An earlier version accepted syslog over
+UDP/TCP and wrote SQLite; `systemd-journal-remote` does that transport better,
+and keeping a second copy of the same log data bought nothing the journal does
+not already provide.
 
-An FTS table becomes justified if measured query latency is unacceptable. That
-change can preserve the current `LogQuery` model and HTTP API.
+Removing it also removed the reason the syslog listener existed. The journal
+carries `_SYSTEMD_UNIT`, `_BOOT_ID`, `_UID`, `_COMM` and `_CMDLINE`; the syslog
+path reached us only after rsyslog had flattened those away.
 
-## Numeric facility and severity
+## Reading the format rather than shelling out
 
-The datastore and API expose facility and severity as their syslog numeric
-values. This avoids committing the query model to one display-name vocabulary.
-The browser maps severity numbers to standard names for display.
+`journalctl --output=json` would have answered every query this interface
+makes. Reading the binary format directly costs roughly a thousand lines but
+removes a process spawn and a JSON parse from each request, and gives the query
+planner access to the journal's own indexes rather than only to journalctl's
+command line.
 
-## In-process live distribution
+## Refusing files instead of guessing at them
 
-Stored messages are published to bounded, per-client channels after the SQLite
-insert succeeds. Live tail therefore reports only records that historical
-search can return. Live delivery is not durable; clients reconnect after a
-network interruption and can repeat the historical query.
+A file whose `HEADER_INCOMPATIBLE_*` flags are not all implemented is refused,
+and there is no fallback to `journalctl`. A reader that proceeds past a feature
+it does not understand returns wrong entries, and wrong logs are worse than an
+error that says which flag is missing.
 
-## Flood accounting
+Structural corruption is handled the opposite way: the file is skipped and the
+rest of the tree is still served. The format documentation asks readers to
+degrade around damage, and a file being created right now looks the same as a
+damaged one.
 
-Each source address has an in-memory token bucket. Excess input and full ingest
-queue writes are dropped. Cumulative counters in `/api/status` make these losses
-observable. Counters reset when the process starts.
+## One driver term, the rest tested per candidate
 
-## Journal transport
+A query becomes a conjunction of disjunctions over DATA objects: `severity:<=3`
+is one term holding four priority values. Rather than intersecting every term's
+entry array chain in parallel, the term with the fewest entries drives the
+iteration and the others are tested against each candidate.
 
-The initial service accepts syslog only. The storage writer consumes a
-`PendingLogEntry` channel rather than receiving directly from a socket. A future
-journal receiver can submit normalized records through the same boundary.
+The driver is the most selective filter available, so the number of candidates
+examined is already bounded by the best index the query offers. Testing a
+candidate compares integers against the entry's item array, which the format
+documentation notes is short. This stays within a constant factor of a full
+k-way intersection and avoids its machinery.
+
+Equality filters resolve to a DATA object offset once per file, so testing an
+entry never decodes a payload. Only the unindexed message substring does, and
+it compares a field-name prefix straight off the mapping to avoid decoding
+fields it does not want.
+
+## Exact, case-sensitive field matching
+
+Field filters are hash lookups over the stored bytes, so they match exactly.
+The previous SQLite schema compared `COLLATE NOCASE`; preserving that would
+have meant scanning instead of seeking. `journalctl _HOSTNAME=imp` behaves the
+same way, and the in-memory filter used for the live stream matches these
+semantics so that the stream cannot show an entry a search would miss.
+
+## Cursors rather than row identifiers
+
+Journal entries have no database identity, so pagination is a cursor holding
+the writing file's `seqnum_id`, the entry's sequence number, and its timestamp.
+Paging resumes below that position; tailing resumes above it. Two entries from
+different senders sharing a microsecond would order by file, which is stable
+but arbitrary.
+
+## Live tail is durable
+
+The previous live stream was an in-process fan-out: delivery was best-effort
+and a client that lost its connection had to re-run its historical query. The
+follower now holds a journal cursor, so a reconnecting client resumes exactly
+where it stopped.
+
+## Serialised remapping
+
+Journal files that systemd is still writing grow, and picking up the new bytes
+means remapping. Unmapping a file while another thread reads it is a
+segmentation fault rather than an exception, so refreshing the file set and
+reading from it hold the same lock. Both are short: a refresh stats the
+directory, a query runs in milliseconds.

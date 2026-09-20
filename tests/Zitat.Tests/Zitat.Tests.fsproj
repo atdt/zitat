@@ -5,10 +5,10 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="SyslogTests.fs" />
+    <Compile Include="SipHashTests.fs" />
+    <Compile Include="JournalTests.fs" />
     <Compile Include="QueryTests.fs" />
-    <Compile Include="DatabaseTests.fs" />
-    <Compile Include="IngestionTests.fs" />
+    <Compile Include="CorpusTests.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />

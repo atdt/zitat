@@ -8,7 +8,7 @@ const liveButton = document.querySelector('#live');
 const notice = document.querySelector('#notice');
 const template = document.querySelector('#row');
 let cursor = null;
-let source = null;
+let stream = null;
 
 const severityNames = ['emerg', 'alert', 'crit', 'err', 'warning', 'notice', 'info', 'debug'];
 const facilityNames = [
@@ -29,37 +29,53 @@ function appendFilter(name, value) {
   refresh();
 }
 
+// Journal field values may contain spaces, so quote anything that has one.
+function quote(value) {
+  return /\s/.test(value) ? `"${value}"` : value;
+}
+
+function field(row, selector, text, filter, value) {
+  const button = row.querySelector(selector);
+  button.textContent = text ?? '—';
+  button.disabled = value === null || value === undefined;
+  if (!button.disabled) button.onclick = () => appendFilter(filter, quote(value));
+  return button;
+}
+
 function render(item, prepend = false) {
-  if (document.querySelector(`[data-id="${item.id}"]`)) return;
+  if (document.querySelector(`[data-cursor="${item.cursor}"]`)) return;
   const row = template.content.firstElementChild.cloneNode(true);
-  row.dataset.id = item.id;
-  row.querySelector('time').textContent = new Date(item.receivedAt).toLocaleString();
-  const host = row.querySelector('.host');
-  host.textContent = item.hostname || item.sourceAddress;
-  host.title = item.hostname ? '' : `Filter by source ${item.sourceAddress}`;
-  host.onclick = () => {
-    if (item.hostname) appendFilter('host', item.hostname);
-    else appendFilter('source', item.sourceAddress);
-  };
-  const app = row.querySelector('.app');
-  app.textContent = item.application
-    ? `${item.application}${item.processId ? `[${item.processId}]` : ''}`
-    : '—';
-  app.disabled = !item.application;
-  app.onclick = () => appendFilter('app', item.application);
-  const facility = row.querySelector('.facility');
-  facility.textContent = Number.isInteger(item.facility)
-    ? facilityNames[item.facility]
-    : '—';
-  facility.disabled = !Number.isInteger(item.facility);
-  facility.title = Number.isInteger(item.facility) ? facilityNames[item.facility] : '';
-  facility.onclick = () => appendFilter('facility', facilityNames[item.facility]);
-  const severity = row.querySelector('.severity');
-  severity.textContent = severityNames[item.severity] || '—';
-  severity.disabled = !Number.isInteger(item.severity);
-  severity.onclick = () => appendFilter('severity', severityNames[item.severity]);
+  row.dataset.cursor = item.cursor;
+  row.querySelector('time').textContent = new Date(item.realtime).toLocaleString();
+
+  field(row, '.host', item.hostname ?? item.source, 'host', item.hostname);
+  field(
+    row,
+    '.app',
+    item.application ? `${item.application}${item.processId ? `[${item.processId}]` : ''}` : null,
+    'app',
+    item.application
+  );
+  field(row, '.unit', item.unit, 'unit', item.unit);
+  field(
+    row,
+    '.facility',
+    Number.isInteger(item.facility) ? facilityNames[item.facility] : null,
+    'facility',
+    Number.isInteger(item.facility) ? facilityNames[item.facility] : null
+  );
+  field(
+    row,
+    '.severity',
+    Number.isInteger(item.severity) ? severityNames[item.severity] : null,
+    'severity',
+    Number.isInteger(item.severity) ? severityNames[item.severity] : null
+  );
+
   row.querySelector('.message').textContent = item.message;
-  row.title = `source=${item.sourceAddress}\nraw=${item.rawMessage}`;
+  // The journal carries far more per entry than the row shows; keep all of it
+  // reachable without a detail view.
+  row.title = item.fields.map(([name, value]) => `${name}=${value}`).join('\n');
   prepend ? list.prepend(row) : list.append(row);
 }
 
@@ -71,30 +87,31 @@ async function load(append = false) {
   const page = await response.json();
   if (!append) list.replaceChildren();
   page.items.forEach(item => render(item));
-  cursor = page.nextBeforeId;
+  cursor = page.nextBefore;
   older.hidden = !cursor || page.items.length === 0;
   empty.style.display = list.children.length ? 'none' : 'block';
 }
 
-async function showLosses() {
+async function showSummary() {
   const response = await fetch('/api/status');
   if (!response.ok) return;
-  const status = await response.json();
-  const dropped = status.floodDropped + status.queueDropped + status.storageFailed;
-  notice.textContent = dropped
-    ? `${dropped} messages lost since service start; inspect /api/status.`
-    : '';
+  const { journal } = await response.json();
+  const entries = journal.entries.toLocaleString();
+  const senders = journal.sources.length;
+  notice.textContent =
+    `${entries} entries from ${senders} ${senders === 1 ? 'source' : 'sources'}` +
+    ` in ${journal.files} journal files.`;
 }
 
 function connect() {
-  if (source) source.close();
-  source = new EventSource(`/api/tail?${parameters()}`);
-  source.onmessage = event => {
+  if (stream) stream.close();
+  stream = new EventSource(`/api/tail?${parameters()}`);
+  stream.onmessage = event => {
     render(JSON.parse(event.data), true);
     empty.style.display = 'none';
   };
-  source.onerror = () => { notice.textContent = 'Live connection interrupted; reconnecting.'; };
-  source.onopen = () => { showLosses(); };
+  stream.onerror = () => { notice.textContent = 'Live connection interrupted; reconnecting.'; };
+  stream.onopen = () => { showSummary(); };
   liveButton.textContent = 'Pause';
 }
 
@@ -108,7 +125,7 @@ function refresh() {
 form.onsubmit = event => { event.preventDefault(); refresh(); };
 older.onclick = () => load(true).catch(error => { notice.textContent = error.message; });
 liveButton.onclick = () => {
-  if (source) { source.close(); source = null; liveButton.textContent = 'Resume'; }
+  if (stream) { stream.close(); stream = null; liveButton.textContent = 'Resume'; }
   else connect();
 };
 
@@ -116,5 +133,5 @@ const initial = new URLSearchParams(location.search);
 search.value = initial.get('q') || '';
 range.value = initial.get('range') ?? '1h';
 load().catch(error => { notice.textContent = error.message; });
-showLosses();
+showSummary();
 connect();

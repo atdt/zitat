@@ -5,3 +5,7 @@ obj/
 *.db-wal
 .DS_Store
 artifacts/
+
+# Journal corpora copied from a live host: large, and real log data.
+testdata/
+systemd_*.orig.tar.gz

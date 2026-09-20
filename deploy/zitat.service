@@ -1,24 +1,27 @@
 [Unit]
-Description=Zitat syslog collector
+Description=Zitat journal search
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=notify
 DynamicUser=yes
-StateDirectory=zitat
-WorkingDirectory=/var/lib/zitat
+# Zitat only reads. Membership of systemd-journal grants the journal tree,
+# including the files systemd-journal-remote writes.
+SupplementaryGroups=systemd-journal
+WorkingDirectory=/opt/zitat
 ExecStart=/opt/zitat/zitat
 Environment=ASPNETCORE_URLS=http://127.0.0.1:8080
-Environment=Zitat__DatabasePath=/var/lib/zitat/zitat.db
+Environment=Zitat__JournalDirectory=/var/log/journal
 EnvironmentFile=-/etc/zitat.env
 # A hosted service that dies takes the host down with a clean exit, so
-# on-failure would leave the collector dead. Always restart.
+# on-failure would leave the service dead. Always restart.
 Restart=always
 RestartSec=5s
 
-# imp is a 2 GB, 4-core Raspberry Pi 4. Steady-state usage is well under
-# these caps; they exist to keep a flood or a leak from wedging the host.
+# imp is a 2 GB, 4-core Raspberry Pi 4. Journal files are memory-mapped, so
+# most of the resident size is page cache the kernel can reclaim; these caps
+# bound the process itself.
 MemoryHigh=256M
 MemoryMax=384M
 CPUQuota=200%
@@ -26,6 +29,7 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectHome=yes
 ProtectSystem=strict
+ReadOnlyPaths=/var/log/journal
 
 [Install]
 WantedBy=multi-user.target

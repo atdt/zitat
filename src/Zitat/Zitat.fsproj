@@ -5,21 +5,25 @@
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Journal/Format.fs" />
+    <Compile Include="Journal/SipHash.fs" />
+    <Compile Include="Journal/Zstd.fs" />
+    <Compile Include="Journal/Mapping.fs" />
+    <Compile Include="Journal/JournalFile.fs" />
+    <Compile Include="Journal/Scan.fs" />
     <Compile Include="Domain.fs" />
+    <Compile Include="Journal/Reader.fs" />
     <Compile Include="Configuration.fs" />
-    <Compile Include="Syslog.fs" />
     <Compile Include="Query.fs" />
-    <Compile Include="Database.fs" />
     <Compile Include="Live.fs" />
-    <Compile Include="Ingestion.fs" />
-    <Compile Include="Maintenance.fs" />
+    <Compile Include="Follower.fs" />
     <Compile Include="Web.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Falco" Version="5.2.0" />
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.6" />
     <PackageReference Include="FSharp.SystemTextJson" Version="1.4.36" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.12" />
   </ItemGroup>
 </Project>

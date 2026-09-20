@@ -8,12 +8,14 @@ module Query =
         Text = None
         Hostname = None
         Application = None
-        SourceAddress = None
+        Unit = None
+        Source = None
+        BootId = None
         Facility = None
         Severity = None
         Since = None
         Until = None
-        BeforeId = None
+        Before = None
         Limit = 200
     }
 
@@ -42,8 +44,7 @@ module Query =
         | _ -> None
 
     let private named values (value: string) =
-        values
-        |> Map.tryFind (value.ToLowerInvariant())
+        values |> Map.tryFind (value.ToLowerInvariant())
 
     let private severityValue value =
         integer value
@@ -84,42 +85,27 @@ module Query =
 
     let parseText (value: string) (query: LogQuery) =
         let apply (result: LogQuery, text: string list) (token: string) =
-            let parts = token.Split(':', 2)
-
-            match parts with
+            match token.Split(':', 2) with
             | [| "host"; value |] -> { result with Hostname = Some value }, text
             | [| "app"; value |] -> { result with Application = Some value }, text
-            | [| "source"; value |] -> { result with SourceAddress = Some value }, text
-            | [| "facility"; value |] ->
-                { result with Facility = facilityValue value }, text
-            | [| "severity"; value |] ->
-                { result with Severity = numericFilter value }, text
+            | [| "unit"; value |] -> { result with Unit = Some value }, text
+            | [| "source"; value |] -> { result with Source = Some value }, text
+            | [| "boot"; value |] -> { result with BootId = Some value }, text
+            | [| "facility"; value |] -> { result with Facility = facilityValue value }, text
+            | [| "severity"; value |] -> { result with Severity = numericFilter value }, text
             | _ -> result, token :: text
 
-        let parsed, remaining =
-            tokens value
-            |> List.fold apply (query, [])
-
+        let parsed, remaining = tokens value |> List.fold apply (query, [])
         let joined = remaining |> List.rev |> String.concat " "
         let text = if String.IsNullOrWhiteSpace joined then None else Some joined
 
         { parsed with Text = text }
 
+    /// Tests an entry against a query in memory, for filtering the live
+    /// stream. Exact-value filters are case-sensitive here for the same reason
+    /// they are in the index: that is what the stored bytes mean.
     let matches (query: LogQuery) (entry: LogEntry) =
-        let same (expected: string option) (actual: string option) =
-            match expected with
-            | None -> true
-            | Some value ->
-                actual
-                |> Option.exists (fun found ->
-                    String.Equals(value, found, StringComparison.OrdinalIgnoreCase))
-
-        let contains (expected: string option) (actual: string) =
-            expected
-            |> Option.forall (fun value ->
-                actual.Contains(value, StringComparison.OrdinalIgnoreCase))
-
-        let equal expected actual =
+        let same expected actual =
             expected |> Option.forall (fun value -> actual = Some value)
 
         let within expected actual =
@@ -133,11 +119,15 @@ module Query =
                     | AtMost value -> found <= value
                     | AtLeast value -> found >= value)
 
-        contains query.Text entry.Message
+        query.Text
+        |> Option.forall (fun needle ->
+            entry.Message.Contains(needle, StringComparison.OrdinalIgnoreCase))
         && same query.Hostname entry.Hostname
         && same query.Application entry.Application
-        && same query.SourceAddress (Some entry.SourceAddress)
-        && equal query.Facility entry.Facility
+        && same query.Unit entry.Unit
+        && same query.BootId entry.BootId
+        && query.Source |> Option.forall (fun value -> entry.Source = value)
+        && same query.Facility entry.Facility
         && within query.Severity entry.Severity
-        && query.Since |> Option.forall (fun value -> entry.ReceivedAt >= value)
-        && query.Until |> Option.forall (fun value -> entry.ReceivedAt <= value)
+        && query.Since |> Option.forall (fun value -> entry.Realtime >= value)
+        && query.Until |> Option.forall (fun value -> entry.Realtime <= value)

@@ -4,6 +4,8 @@ open Falco.Extensions
 open Microsoft.AspNetCore.Builder
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.Extensions.Hosting
+open Microsoft.Extensions.Logging
+open Zitat.Journal
 
 module Program =
     [<EntryPoint>]
@@ -13,26 +15,29 @@ module Program =
         // prefixes log lines with journal priorities. It is a no-op elsewhere.
         builder.Host.UseSystemd() |> ignore
         let options = Configuration.load builder.Configuration
-        let database = Database(options.DatabasePath)
-        database.Initialize()
 
         builder.Services.AddSingleton(options) |> ignore
-        builder.Services.AddSingleton(database) |> ignore
-        builder.Services.AddSingleton<IngestMetrics>() |> ignore
-        builder.Services.AddSingleton<IngestSink>() |> ignore
+
+        builder.Services.AddSingleton<JournalSet>(fun services ->
+            let logger = services.GetRequiredService<ILoggerFactory>().CreateLogger "Zitat.Journal"
+            let set = new JournalSet(options.JournalDirectory, fun message -> logger.LogWarning message)
+            // Serve the first request against a populated set rather than an
+            // empty one.
+            set.Refresh()
+            set)
+        |> ignore
+
+        builder.Services.AddSingleton<JournalReader>() |> ignore
         builder.Services.AddSingleton<LiveHub>() |> ignore
-        builder.Services.AddHostedService<StorageWriter>() |> ignore
-        builder.Services.AddHostedService<UdpIngestion>() |> ignore
-        builder.Services.AddHostedService<TcpIngestion>() |> ignore
-        builder.Services.AddHostedService<Maintenance>() |> ignore
+        builder.Services.AddHostedService<JournalFollower>() |> ignore
 
         let app = builder.Build()
         app.UseDefaultFiles() |> ignore
         app.UseStaticFiles() |> ignore
         app.UseRouting() |> ignore
 
+        let reader = app.Services.GetRequiredService<JournalReader>()
         let live = app.Services.GetRequiredService<LiveHub>()
-        let metrics = app.Services.GetRequiredService<IngestMetrics>()
-        app.UseFalco(Web.endpoints database live metrics) |> ignore
+        app.UseFalco(Web.endpoints reader live) |> ignore
         app.Run()
         0

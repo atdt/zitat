@@ -1,20 +1,43 @@
 namespace Zitat.Tests
 
+open System
 open Xunit
 open Zitat
 
 module QueryTests =
+    let private entry = {
+        Cursor = "cursor"
+        Realtime = DateTimeOffset(2026, 9, 19, 12, 0, 0, TimeSpan.Zero)
+        Source = "100.91.171.10"
+        Hostname = Some "imp"
+        Application = Some "sshd"
+        Unit = Some "ssh.service"
+        ProcessId = Some "42"
+        BootId = Some "7296587132114e25afcf42a4f4e6f6bf"
+        Facility = Some 4
+        Severity = Some 6
+        Message = "Accepted publickey for ori"
+        Fields = []
+    }
+
     [<Fact>]
     let ``text syntax separates filters from terms`` () =
         let result =
-            Query.parseText
-                "host:router app:dhcpd severity:5 \"lease granted\""
-                Query.empty
+            Query.parseText "host:imp app:sshd severity:5 \"publickey for ori\"" Query.empty
 
-        Assert.Equal(Some "router", result.Hostname)
-        Assert.Equal(Some "dhcpd", result.Application)
+        Assert.Equal(Some "imp", result.Hostname)
+        Assert.Equal(Some "sshd", result.Application)
         Assert.Equal(Some(Exactly 5), result.Severity)
-        Assert.Equal(Some "lease granted", result.Text)
+        Assert.Equal(Some "publickey for ori", result.Text)
+
+    [<Fact>]
+    let ``text syntax reads the journal-specific filters`` () =
+        let result = Query.parseText "unit:ssh.service boot:abc123 source:100.71.212.2" Query.empty
+
+        Assert.Equal(Some "ssh.service", result.Unit)
+        Assert.Equal(Some "abc123", result.BootId)
+        Assert.Equal(Some "100.71.212.2", result.Source)
+        Assert.Equal(None, result.Text)
 
     [<Fact>]
     let ``severity accepts comparison operators`` () =
@@ -30,65 +53,43 @@ module QueryTests =
     let ``severity accepts standard names`` () =
         let parse text = (Query.parseText text Query.empty).Severity
 
-        Assert.Equal(Some(Exactly 0), parse "severity:emerg")
-        Assert.Equal(Some(Exactly 2), parse "severity:critical")
-        Assert.Equal(Some(AtMost 3), parse "severity:<=err")
+        Assert.Equal(Some(Exactly 3), parse "severity:err")
+        Assert.Equal(Some(AtMost 4), parse "severity:<=warning")
+        Assert.Equal(Some(Exactly 7), parse "severity:debug")
 
     [<Fact>]
     let ``facility accepts standard names`` () =
-        let parse text = (Query.parseText text Query.empty).Facility
-
-        Assert.Equal(Some 0, parse "facility:kernel")
-        Assert.Equal(Some 10, parse "facility:authpriv")
-        Assert.Equal(Some 23, parse "facility:local7")
+        Assert.Equal(Some 4, (Query.parseText "facility:auth" Query.empty).Facility)
+        Assert.Equal(Some 3, (Query.parseText "facility:daemon" Query.empty).Facility)
+        Assert.Equal(Some 17, (Query.parseText "facility:17" Query.empty).Facility)
 
     [<Fact>]
-    let ``source filters on the sending address`` () =
-        let result = Query.parseText "source:10.0.0.5 lease" Query.empty
-
-        Assert.Equal(Some "10.0.0.5", result.SourceAddress)
-        Assert.Equal(Some "lease", result.Text)
+    let ``an empty query matches everything`` () =
+        Assert.True(Query.matches Query.empty entry)
 
     [<Fact>]
-    let ``live matching handles an absent field`` () =
-        let entry = {
-            Id = 1L
-            ReceivedAt = System.DateTimeOffset.UtcNow
-            SentAt = None
-            Hostname = None
-            Application = None
-            ProcessId = None
-            Facility = None
-            Severity = None
-            Message = "message"
-            SourceAddress = "source"
-            RawMessage = "message"
-        }
+    let ``text matching ignores case`` () =
+        Assert.True(Query.matches { Query.empty with Text = Some "ACCEPTED" } entry)
+        Assert.False(Query.matches { Query.empty with Text = Some "rejected" } entry)
 
-        let query = { Query.empty with Facility = Some 1 }
-        Assert.False(Query.matches query entry)
+    /// Exact-value filters go through the journal's hash index, which matches
+    /// bytes. In-memory filtering has to agree with that or the live stream
+    /// would show entries a search cannot find.
+    [<Fact>]
+    let ``exact filters are case sensitive`` () =
+        Assert.True(Query.matches { Query.empty with Hostname = Some "imp" } entry)
+        Assert.False(Query.matches { Query.empty with Hostname = Some "IMP" } entry)
+        Assert.True(Query.matches { Query.empty with Unit = Some "ssh.service" } entry)
+        Assert.False(Query.matches { Query.empty with Unit = Some "SSH.service" } entry)
 
     [<Fact>]
-    let ``live matching honors a severity threshold`` () =
-        let entry = {
-            Id = 1L
-            ReceivedAt = System.DateTimeOffset.UtcNow
-            SentAt = None
-            Hostname = Some "router"
-            Application = None
-            ProcessId = None
-            Facility = Some 1
-            Severity = Some 2
-            Message = "message"
-            SourceAddress = "10.0.0.5"
-            RawMessage = "message"
-        }
+    let ``severity comparisons count down from emergency`` () =
+        Assert.True(Query.matches { Query.empty with Severity = Some(AtLeast 6) } entry)
+        Assert.False(Query.matches { Query.empty with Severity = Some(AtMost 3) } entry)
 
-        let severity filter = { Query.empty with Severity = Some filter }
-        Assert.True(Query.matches (severity (AtMost 3)) entry)
-        Assert.False(Query.matches (severity (AtMost 1)) entry)
-        Assert.False(Query.matches (severity (Exactly 3)) entry)
-
-        let source value = { Query.empty with SourceAddress = Some value }
-        Assert.True(Query.matches (source "10.0.0.5") entry)
-        Assert.False(Query.matches (source "10.0.0.6") entry)
+    [<Fact>]
+    let ``the time range is inclusive at both ends`` () =
+        Assert.True(Query.matches { Query.empty with Since = Some entry.Realtime } entry)
+        Assert.True(Query.matches { Query.empty with Until = Some entry.Realtime } entry)
+        Assert.False(
+            Query.matches { Query.empty with Since = Some(entry.Realtime.AddTicks 1L) } entry)

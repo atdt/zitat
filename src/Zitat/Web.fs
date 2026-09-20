@@ -3,11 +3,12 @@ namespace Zitat
 open System
 open System.Globalization
 open System.Text.Json
+open System.Text.Json.Serialization
 open System.Threading.Tasks
 open Falco
 open Falco.Routing
 open Microsoft.AspNetCore.Http
-open System.Text.Json.Serialization
+open Zitat.Journal
 
 module Web =
     let jsonOptions =
@@ -26,22 +27,17 @@ module Web =
             | true, parsed -> Some parsed
             | _ -> None)
 
-    let private int64 name context =
-        value name context
-        |> Option.bind (fun text ->
-            match Int64.TryParse text with
-            | true, parsed -> Some parsed
-            | _ -> None)
-
-    // A timestamp without an offset means UTC, matching stored receive times.
+    // A timestamp without an offset means UTC, matching journal timestamps.
     let private timestamp name context =
         value name context
         |> Option.bind (fun text ->
-            match DateTimeOffset.TryParse(
-                text,
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal ||| DateTimeStyles.AdjustToUniversal
-            ) with
+            match
+                DateTimeOffset.TryParse(
+                    text,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal ||| DateTimeStyles.AdjustToUniversal
+                )
+            with
             | true, parsed -> Some parsed
             | _ -> None)
 
@@ -50,6 +46,7 @@ module Web =
             None
         else
             let number = value.Substring(0, value.Length - 1)
+
             match Double.TryParse number, value[value.Length - 1] with
             | (true, amount), 'm' -> Some(DateTimeOffset.UtcNow.AddMinutes(-amount))
             | (true, amount), 'h' -> Some(DateTimeOffset.UtcNow.AddHours(-amount))
@@ -70,8 +67,9 @@ module Web =
         { textQuery with
             Hostname = value "host" context |> Option.orElse textQuery.Hostname
             Application = value "app" context |> Option.orElse textQuery.Application
-            SourceAddress =
-                value "source" context |> Option.orElse textQuery.SourceAddress
+            Unit = value "unit" context |> Option.orElse textQuery.Unit
+            Source = value "source" context |> Option.orElse textQuery.Source
+            BootId = value "boot" context |> Option.orElse textQuery.BootId
             Facility = integer "facility" context |> Option.orElse textQuery.Facility
             Severity =
                 value "severity" context
@@ -79,30 +77,22 @@ module Web =
                 |> Option.orElse textQuery.Severity
             Since = since
             Until = timestamp "until" context
-            BeforeId = int64 "before" context
+            Before = value "before" context
             Limit = integer "limit" context |> Option.defaultValue 200 }
 
-    let private logs (database: Database) (context: HttpContext) =
+    let private logs (reader: JournalReader) (context: HttpContext) =
         let parsed = query context
-        let items = database.Search parsed
+        let items = reader.Search parsed
         let limit = Math.Clamp(parsed.Limit, 1, 1000)
-        let next =
-            if items.Length = limit then items |> List.tryLast |> Option.map _.Id
-            else None
-        Response.ofJsonOptions jsonOptions {| items = items; nextBeforeId = next |} context
 
-    let private status (database: Database) (metrics: IngestMetrics) context =
-        Response.ofJsonOptions jsonOptions
-            {| status = "ok"
-               logCount = database.Count
-               storageBytes = database.SizeBytes
-               received = metrics.Received
-               stored = metrics.Stored
-               malformed = metrics.Malformed
-               floodDropped = metrics.FloodDropped
-               queueDropped = metrics.QueueDropped
-               storageFailed = metrics.StorageFailed |}
-            context
+        // A full page implies there may be more; a short one is the end.
+        let next =
+            if items.Length = limit then items |> List.tryLast |> Option.map _.Cursor else None
+
+        Response.ofJsonOptions jsonOptions {| items = items; nextBefore = next |} context
+
+    let private status (reader: JournalReader) context =
+        Response.ofJsonOptions jsonOptions {| status = "ok"; journal = reader.Status() |} context
 
     let private stream (live: LiveHub) (context: HttpContext) : Task =
         task {
@@ -111,24 +101,27 @@ module Web =
             context.Response.Headers.CacheControl <- "no-cache"
             context.Response.Headers.Connection <- "keep-alive"
             // Send the headers now so the client reports an open stream
-            // before the first matching message arrives.
+            // before the first matching entry arrives.
             do! context.Response.Body.FlushAsync(context.RequestAborted)
             let subscription = live.Subscribe()
+            let filter = query context
 
             try
                 while not context.RequestAborted.IsCancellationRequested do
                     let! entry = subscription.Reader.ReadAsync(context.RequestAborted)
-                    if Query.matches (query context) entry then
+
+                    if Query.matches filter entry then
                         let json = JsonSerializer.Serialize(entry, jsonOptions)
                         do! context.Response.WriteAsync($"data: {json}\n\n")
                         do! context.Response.Body.FlushAsync(context.RequestAborted)
             finally
                 subscription.Dispose()
-        } :> Task
+        }
+        :> Task
 
-    let endpoints database live metrics = [
-        get "/api/logs" (logs database)
+    let endpoints reader live = [
+        get "/api/logs" (logs reader)
         get "/api/tail" (stream live)
-        get "/api/status" (status database metrics)
+        get "/api/status" (status reader)
         get "/" (fun context -> context.Response.SendFileAsync("wwwroot/index.html"))
     ]

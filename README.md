@@ -1,8 +1,11 @@
 # Zitat
 
-Zitat is a single-node syslog collector for small private networks. It accepts
-RFC 3164 and RFC 5424 messages over UDP and TCP, stores them in SQLite, and
-provides a searchable web log stream and HTTP API.
+Zitat is a search interface for systemd journals. It reads journal files
+directly — the binary format, not `journalctl` output — and serves a searchable
+web stream and HTTP API over every sender a host has collected.
+
+It stores nothing of its own. The journal is the datastore; Zitat is the query
+layer over it.
 
 ## Run locally
 
@@ -13,19 +16,13 @@ make test
 make run
 ```
 
-`make build`, `make publish`, and `make clean` provide the other common
-repository workflows. The Makefile delegates compilation and packaging to the
-.NET project files.
+`make build`, `make publish`, and `make clean` cover the other repository
+workflows. The web interface uses the address printed by ASP.NET Core.
 
-The web interface uses the address printed by ASP.NET Core. The syslog
-listeners use UDP and TCP port 5514 by default.
-
-Send test messages with `logger` or `nc`:
+To read a journal tree other than the host's own:
 
 ```sh
-logger --server 127.0.0.1 --port 5514 --tcp "TCP test"
-printf '<13>Sep 11 10:30:00 router test[42]: UDP test\n' \
-  | nc -u -w 1 127.0.0.1 5514
+Zitat__JournalDirectory=./testdata/journal make run
 ```
 
 ## Configuration
@@ -34,126 +31,108 @@ Settings come from `appsettings.json`, environment variables, or ASP.NET Core
 command-line configuration. Environment variable names replace `:` with `__`.
 
 | Setting | Default | Meaning |
-|---|---:|---|
-| `Zitat:DatabasePath` | `zitat.db` | SQLite database path |
-| `Zitat:UdpPort` | `5514` | UDP listen port |
-| `Zitat:TcpPort` | `5514` | TCP listen port |
-| `Zitat:RetentionDays` | `14` | Maximum receive-time age |
-| `Zitat:MaxStorageBytes` | `1073741824` | Database, WAL, and SHM byte limit |
-| `Zitat:MaxMessageBytes` | `65536` | Maximum accepted frame size |
-| `Zitat:FloodMessagesPerSecond` | `500` | Refill rate for each source |
-| `Zitat:FloodBurst` | `1000` | Initial and maximum source allowance |
+|---|---|---|
+| `Zitat:JournalDirectory` | `/var/log/journal` | Root of the journal tree to read, searched recursively |
+| `Zitat:TailIntervalMilliseconds` | `1000` | Fallback poll interval when the filesystem reports no change |
 
-The collector checks retention and storage size once per minute. It deletes
-expired records first. If the SQLite files still exceed the size limit, it
-deletes the oldest records in batches and reclaims their pages.
+Retention and disk limits belong to systemd, not to Zitat. Configure them in
+`journald.conf` and `journal-remote.conf`.
 
-## Linux forwarding
+## Collecting logs
 
-Rsyslog can forward both native syslog input and messages read from journald.
-The following action uses TCP and the RFC 5424 forwarding template:
+Zitat reads whatever is under its journal directory. Nothing needs to forward
+to Zitat itself.
 
-```text
-*.* action(
-  type="omfwd"
-  target="COLLECTOR_TAILSCALE_ADDRESS"
-  port="5514"
-  protocol="tcp"
-  template="RSYSLOG_SyslogProtocol23Format"
-  action.resumeRetryCount="-1"
-  queue.type="linkedList"
-  queue.filename="zitat"
-)
+On each host that should ship logs, enable `systemd-journal-upload` pointed at
+the collector:
+
+```ini
+# /etc/systemd/journal-upload.conf
+[Upload]
+URL=http://COLLECTOR_TAILSCALE_ADDRESS:19532
 ```
 
-On systems where rsyslog is configured to read the journal, no Zitat-specific
-client agent is required. The exact rsyslog input configuration remains the
-responsibility of each host's configuration management.
+On the collector, `systemd-journal-remote` receives them and writes one file
+per sender under `/var/log/journal/remote`. Set its retention there:
 
-Traditional devices can send UDP syslog to the collector's port 5514. Use port
-514 instead only if deployment configuration grants the service permission to
-bind a privileged port.
+```ini
+# /etc/systemd/journal-remote.conf
+[Remote]
+Seal=false
+SplitMode=host
+MaxUse=4G
+```
+
+Entries arrive with their `_SYSTEMD_UNIT`, `_BOOT_ID`, `_UID`, `_COMM` and
+`_CMDLINE` intact, which a syslog transport would have flattened away. Those
+fields are only as trustworthy as the sender that supplied them.
+
+A device that speaks only syslog can still be covered without Zitat growing a
+listener: have rsyslog on the collector accept it (`imudp`) and write it to the
+local journal (`omjournal`), which lands under the same tree.
 
 ## Search API
 
-`GET /api/logs` returns newest-first results. It accepts these parameters:
+`GET /api/logs` returns newest-first results.
 
 | Parameter | Meaning |
 |---|---|
 | `q` | Message text and textual filters |
-| `host` | Exact, case-insensitive hostname |
-| `app` | Exact, case-insensitive application |
-| `source` | Exact, case-insensitive sender address |
-| `facility` | Numeric syslog facility, 0 through 23 |
-| `severity` | Syslog severity 0 through 7, optionally compared |
-| `since` | Inclusive ISO 8601 receive timestamp |
-| `until` | Inclusive ISO 8601 receive timestamp |
+| `host` | `_HOSTNAME` |
+| `app` | `SYSLOG_IDENTIFIER` |
+| `unit` | `_SYSTEMD_UNIT` |
+| `boot` | `_BOOT_ID` |
+| `source` | Sending host, from the journal file name |
+| `facility` | `SYSLOG_FACILITY`, 0 through 23 |
+| `severity` | `PRIORITY` 0 through 7, optionally compared |
+| `since` | Inclusive ISO 8601 timestamp |
+| `until` | Inclusive ISO 8601 timestamp |
 | `range` | Relative range such as `15m`, `6h`, or `7d` |
-| `before` | Return records with a lower ID for pagination |
+| `before` | Cursor from a previous page's `nextBefore` |
 | `limit` | Page size from 1 through 1000; default 200 |
 
-The textual syntax recognizes `host:`, `app:`, `source:`, `facility:`, and
-`severity:`. Remaining terms form one case-insensitive message substring.
-Double quotes keep spaces together. Facility and severity values accept their
-standard names or numeric values.
+The textual syntax recognises `host:`, `app:`, `unit:`, `source:`, `boot:`,
+`facility:`, and `severity:`. Remaining terms form one case-insensitive
+substring of `MESSAGE`. Double quotes keep spaces together. Facility and
+severity accept their standard names or numeric values, and severity accepts
+`<=`, `<`, `>=`, and `>` before either.
 
-Severity accepts `<=`, `<`, `>=`, and `>` before a name or number. Severity
-counts down from emergency at 0, so `severity:<=err` reads "error and worse."
-`severity:emerg` and `severity:3` select one severity. Messages that carry no
-severity match neither form.
+Severity counts down from 0, so `severity:<=3` means error and worse.
 
-`source:` filters on the address the message arrived from. It is the only way
-to isolate a device whose output is malformed enough to carry no hostname.
+**Field filters match exactly, and are case-sensitive.** They are served by the
+journal's own hash index, which is a hash over the stored bytes; `host:imp` and
+`host:IMP` are different lookups. This matches `journalctl _HOSTNAME=imp`.
+
+`GET /api/tail` is the same query as a Server-Sent Events stream.
+`GET /api/status` reports the files, entry count and senders currently visible.
+
+## Journal format support
+
+Zitat implements the format as documented in systemd's
+[JOURNAL_FILE_FORMAT.md](https://systemd.io/JOURNAL_FILE_FORMAT), reading files
+whose incompatible flags are within `KEYED_HASH | COMPACT | COMPRESSED_ZSTD` —
+which is what systemd has written by default since 246.
+
+A file carrying any other incompatible flag is **refused, loudly**. There is no
+fallback path, because a reader that guesses at a feature it does not implement
+shows wrong logs rather than no logs. If a systemd release turns on a new
+incompatible feature, the reader needs teaching before it can read those files.
+
+Corruption is treated differently: a file that fails its structural checks is
+skipped with a warning and the rest of the tree is still served, as the format
+documentation requires of readers.
+
+## Tests
+
+`make test` runs the unit tests. Tests that need real journal files look for a
+tree at `testdata/journal` and skip when it is absent — a corpus is a copy of a
+live host's logs, too large and too personal to keep in the repository. To run
+them, copy one in:
 
 ```sh
-curl --get http://127.0.0.1:8080/api/logs \
-  --data-urlencode 'q=host:router app:dhcpd "lease granted"' \
-  --data-urlencode 'range=24h'
+rsync -a --rsync-path='sudo rsync' COLLECTOR:/var/log/journal/ testdata/journal/
 ```
 
-```sh
-curl --get http://127.0.0.1:8080/api/logs \
-  --data-urlencode 'q=severity:<=err' \
-  --data-urlencode 'range=1h'
-```
-
-`GET /api/tail` is a server-sent event stream and accepts the same filters.
-
-```sh
-curl -N 'http://127.0.0.1:8080/api/tail?severity=3&range=1h'
-```
-
-`GET /api/status` reports stored-message and byte counts. It also reports
-malformed input, rate-limit drops, full-queue drops, and storage failures. It
-queries the database on every call, so it doubles as the health check.
-
-## Deployment
-
-Build the self-contained Linux ARM64 archive for `imp`:
-
-```sh
-scripts/publish-linux-arm64.sh
-```
-
-The output is `artifacts/zitat-linux-arm64.tar.gz`. The repository includes a
-sample [systemd service](deploy/zitat.service) and
-[environment file](deploy/zitat.env.example). They are deployment inputs, not
-an installer. Applying them to `imp` requires an explicit configuration
-management change.
-
-The service uses a dynamic system user and systemd's `/var/lib/zitat` state
-directory. Set `ASPNETCORE_URLS` to a Tailscale address when the UI must be
-reachable from other tailnet hosts. Binding to `0.0.0.0` exposes the HTTP
-listener on every interface and must be paired with host firewall rules.
-
-## Operational notes
-
-- Malformed messages are stored with their original bytes decoded as UTF-8.
-- TCP accepts newline-delimited and RFC 6587 octet-counted frames.
-- Live clients have independent bounded queues. A slow browser cannot block
-  ingestion.
-- SQLite uses WAL mode. Stop the service before copying the database as a
-  single-file backup.
-- All retention decisions use the collector's receive timestamp.
-
-See [design decisions](docs/design-decisions.md) for implementation boundaries.
+Those tests re-derive the hash of every field of every sampled entry and assert
+it resolves to the object the entry references, which exercises SipHash, the
+hash tables, compact offsets and decompression together.
