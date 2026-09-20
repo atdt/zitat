@@ -1,4 +1,4 @@
-.PHONY: build test run publish clean format format-check
+.PHONY: build test run run-corpus publish clean format format-check
 
 build:
 	dotnet build Zitat.slnx
@@ -8,6 +8,10 @@ test:
 
 run:
 	dotnet run --project src/Zitat/Zitat.fsproj
+
+run-corpus:
+	@test -d "$(CURDIR)/testdata/journal" || { echo "testdata/journal is missing" >&2; exit 1; }
+	Zitat__JournalDirectory="$(CURDIR)/testdata/journal" dotnet run --project src/Zitat/Zitat.fsproj
 
 publish:
 	./scripts/publish-linux-arm64.sh
