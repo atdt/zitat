@@ -92,7 +92,12 @@ module CorpusTests =
             let mutable previous = DateTimeOffset.MaxValue
 
             for _ in 1..8 do
-                let page = reader.Search { Query.empty with Before = before; Limit = 100 }
+                let page =
+                    reader.Search
+                        { Query.empty with
+                            Before = before
+                            Limit = 100
+                        }
 
                 for entry in page do
                     Assert.True(seen.Add entry.Cursor, "an entry was returned on two pages")
@@ -113,15 +118,27 @@ module CorpusTests =
             | [] -> ()
             | (host, _) :: _ ->
                 let scanned =
-                    page |> List.filter (fun entry -> entry.Hostname = Some host) |> List.truncate 25
+                    page
+                    |> List.filter (fun entry -> entry.Hostname = Some host)
+                    |> List.truncate 25
 
-                let indexed = reader.Search { Query.empty with Hostname = Some host; Limit = 25 }
+                let indexed =
+                    reader.Search
+                        { Query.empty with
+                            Hostname = Some host
+                            Limit = 25
+                        }
+
                 Assert.Equal<string list>(scanned |> List.map _.Cursor, indexed |> List.map _.Cursor))
 
     [<CorpusFact>]
     let ``severity filters admit only the severities asked for`` () =
         withReader (fun reader ->
-            reader.Search { Query.empty with Severity = Some(AtMost 3); Limit = 200 }
+            reader.Search
+                { Query.empty with
+                    Severity = Some(AtMost 3)
+                    Limit = 200
+                }
             |> List.iter (fun entry ->
                 match entry.Severity with
                 | Some value -> Assert.True(value <= 3, $"severity %d{value} passed a <=3 filter")
@@ -130,11 +147,15 @@ module CorpusTests =
     [<CorpusFact>]
     let ``text search matches the message it claims to`` () =
         withReader (fun reader ->
-            let hits = reader.Search { Query.empty with Text = Some "systemd"; Limit = 50 }
+            let hits =
+                reader.Search
+                    { Query.empty with
+                        Text = Some "systemd"
+                        Limit = 50
+                    }
 
             hits
-            |> List.iter (fun entry ->
-                Assert.Contains("systemd", entry.Message, StringComparison.OrdinalIgnoreCase)))
+            |> List.iter (fun entry -> Assert.Contains("systemd", entry.Message, StringComparison.OrdinalIgnoreCase)))
 
     [<CorpusFact>]
     let ``tailing forward retraces the page that walked backward`` () =
@@ -143,7 +164,11 @@ module CorpusTests =
             let anchor = page |> List.item 40
 
             let forward =
-                reader.Forward { Query.empty with Before = Some anchor.Cursor; Limit = 40 }
+                reader.Forward
+                    { Query.empty with
+                        Before = Some anchor.Cursor
+                        Limit = 40
+                    }
                 |> List.map _.Cursor
 
             let backward = page |> List.take 40 |> List.rev |> List.map _.Cursor
@@ -156,6 +181,10 @@ module CorpusTests =
             let since = newest.Realtime.AddHours -6.0
             let until = newest.Realtime.AddHours -1.0
 
-            reader.Search { Query.empty with Since = Some since; Until = Some until; Limit = 300 }
-            |> List.iter (fun entry ->
-                Assert.InRange(entry.Realtime, since, until)))
+            reader.Search
+                { Query.empty with
+                    Since = Some since
+                    Until = Some until
+                    Limit = 300
+                }
+            |> List.iter (fun entry -> Assert.InRange(entry.Realtime, since, until)))

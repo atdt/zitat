@@ -14,20 +14,17 @@ open Zitat.Journal
 /// cursor, so a reconnecting client resumes exactly where it stopped instead
 /// of having to re-run its historical query.
 type JournalFollower
-    (
-        options: ZitatOptions,
-        set: JournalSet,
-        reader: JournalReader,
-        live: LiveHub,
-        logger: ILogger<JournalFollower>
-    ) =
+    (options: ZitatOptions, set: JournalSet, reader: JournalReader, live: LiveHub, logger: ILogger<JournalFollower>) =
     inherit BackgroundService()
 
     let changed = new SemaphoreSlim(0, 1)
 
     let signal () =
         if changed.CurrentCount = 0 then
-            try changed.Release() |> ignore with :? SemaphoreFullException -> ()
+            try
+                changed.Release() |> ignore
+            with :? SemaphoreFullException ->
+                ()
 
     override _.ExecuteAsync(token: CancellationToken) =
         task {
@@ -55,8 +52,16 @@ type JournalFollower
 
                     let query =
                         match cursor with
-                        | Some position -> { Query.empty with Before = Some position; Limit = 1000 }
-                        | None -> { Query.empty with Since = Some floor; Limit = 1000 }
+                        | Some position ->
+                            { Query.empty with
+                                Before = Some position
+                                Limit = 1000
+                            }
+                        | None ->
+                            { Query.empty with
+                                Since = Some floor
+                                Limit = 1000
+                            }
 
                     for entry in reader.Forward query do
                         live.Publish entry

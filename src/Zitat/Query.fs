@@ -4,20 +4,21 @@ open System
 open System.Text
 
 module Query =
-    let empty = {
-        Text = None
-        Hostname = None
-        Application = None
-        Unit = None
-        Source = None
-        BootId = None
-        Facility = None
-        Severity = None
-        Since = None
-        Until = None
-        Before = None
-        Limit = 200
-    }
+    let empty =
+        {
+            Text = None
+            Hostname = None
+            Application = None
+            Unit = None
+            Source = None
+            BootId = None
+            Facility = None
+            Severity = None
+            Since = None
+            Until = None
+            Before = None
+            Limit = 200
+        }
 
     let private tokens (value: string) =
         let output = ResizeArray<string>()
@@ -50,38 +51,74 @@ module Query =
         integer value
         |> Option.orElseWith (fun () ->
             named
-                (Map [
-                    "emerg", 0; "emergency", 0; "alert", 1
-                    "crit", 2; "critical", 2; "err", 3; "error", 3
-                    "warn", 4; "warning", 4; "notice", 5
-                    "info", 6; "informational", 6; "debug", 7
-                ])
+                (Map
+                    [
+                        "emerg", 0
+                        "emergency", 0
+                        "alert", 1
+                        "crit", 2
+                        "critical", 2
+                        "err", 3
+                        "error", 3
+                        "warn", 4
+                        "warning", 4
+                        "notice", 5
+                        "info", 6
+                        "informational", 6
+                        "debug", 7
+                    ])
                 value)
 
     let private facilityValue value =
         integer value
         |> Option.orElseWith (fun () ->
             named
-                (Map [
-                    "kern", 0; "kernel", 0; "user", 1; "mail", 2
-                    "daemon", 3; "auth", 4; "security", 4; "syslog", 5
-                    "lpr", 6; "news", 7; "uucp", 8; "clock", 9
-                    "authpriv", 10; "ftp", 11; "ntp", 12; "audit", 13
-                    "alert", 14; "clock2", 15; "local0", 16; "local1", 17
-                    "local2", 18; "local3", 19; "local4", 20; "local5", 21
-                    "local6", 22; "local7", 23
-                ])
+                (Map
+                    [
+                        "kern", 0
+                        "kernel", 0
+                        "user", 1
+                        "mail", 2
+                        "daemon", 3
+                        "auth", 4
+                        "security", 4
+                        "syslog", 5
+                        "lpr", 6
+                        "news", 7
+                        "uucp", 8
+                        "clock", 9
+                        "authpriv", 10
+                        "ftp", 11
+                        "ntp", 12
+                        "audit", 13
+                        "alert", 14
+                        "clock2", 15
+                        "local0", 16
+                        "local1", 17
+                        "local2", 18
+                        "local3", 19
+                        "local4", 20
+                        "local5", 21
+                        "local6", 22
+                        "local7", 23
+                    ])
                 value)
 
     /// Reads a severity name or number, optionally prefixed by a comparison.
     let numericFilter (value: string) =
-        let after (prefix: string) = severityValue (value.Substring prefix.Length)
+        let after (prefix: string) =
+            severityValue (value.Substring prefix.Length)
 
-        if value.StartsWith "<=" then after "<=" |> Option.map AtMost
-        elif value.StartsWith ">=" then after ">=" |> Option.map AtLeast
-        elif value.StartsWith "<" then after "<" |> Option.map (fun n -> AtMost(n - 1))
-        elif value.StartsWith ">" then after ">" |> Option.map (fun n -> AtLeast(n + 1))
-        else severityValue value |> Option.map Exactly
+        if value.StartsWith "<=" then
+            after "<=" |> Option.map AtMost
+        elif value.StartsWith ">=" then
+            after ">=" |> Option.map AtLeast
+        elif value.StartsWith "<" then
+            after "<" |> Option.map (fun n -> AtMost(n - 1))
+        elif value.StartsWith ">" then
+            after ">" |> Option.map (fun n -> AtLeast(n + 1))
+        else
+            severityValue value |> Option.map Exactly
 
     let parseText (value: string) (query: LogQuery) =
         let apply (result: LogQuery, text: string list) (token: string) =
@@ -91,13 +128,26 @@ module Query =
             | [| "unit"; value |] -> { result with Unit = Some value }, text
             | [| "source"; value |] -> { result with Source = Some value }, text
             | [| "boot"; value |] -> { result with BootId = Some value }, text
-            | [| "facility"; value |] -> { result with Facility = facilityValue value }, text
-            | [| "severity"; value |] -> { result with Severity = numericFilter value }, text
+            | [| "facility"; value |] ->
+                { result with
+                    Facility = facilityValue value
+                },
+                text
+            | [| "severity"; value |] ->
+                { result with
+                    Severity = numericFilter value
+                },
+                text
             | _ -> result, token :: text
 
         let parsed, remaining = tokens value |> List.fold apply (query, [])
         let joined = remaining |> List.rev |> String.concat " "
-        let text = if String.IsNullOrWhiteSpace joined then None else Some joined
+
+        let text =
+            if String.IsNullOrWhiteSpace joined then
+                None
+            else
+                Some joined
 
         { parsed with Text = text }
 
@@ -120,8 +170,7 @@ module Query =
                     | AtLeast value -> found >= value)
 
         query.Text
-        |> Option.forall (fun needle ->
-            entry.Message.Contains(needle, StringComparison.OrdinalIgnoreCase))
+        |> Option.forall (fun needle -> entry.Message.Contains(needle, StringComparison.OrdinalIgnoreCase))
         && same query.Hostname entry.Hostname
         && same query.Application entry.Application
         && same query.Unit entry.Unit

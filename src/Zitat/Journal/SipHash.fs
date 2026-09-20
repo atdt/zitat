@@ -31,7 +31,7 @@ module SipHash =
     /// `key` must be 16 bytes.
     let hash (key: ReadOnlySpan<byte>) (data: ReadOnlySpan<byte>) =
         let k0 = BinaryPrimitives.ReadUInt64LittleEndian key
-        let k1 = BinaryPrimitives.ReadUInt64LittleEndian (key.Slice 8)
+        let k1 = BinaryPrimitives.ReadUInt64LittleEndian(key.Slice 8)
 
         let mutable v0 = k0 ^^^ 0x736f6d6570736575UL
         let mutable v1 = k1 ^^^ 0x646f72616e646f6dUL
@@ -41,7 +41,7 @@ module SipHash =
         let blocks = data.Length / 8
 
         for index in 0 .. blocks - 1 do
-            let m = BinaryPrimitives.ReadUInt64LittleEndian (data.Slice(index * 8, 8))
+            let m = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(index * 8, 8))
             v3 <- v3 ^^^ m
             round &v0 &v1 &v2 &v3
             round &v0 &v1 &v2 &v3

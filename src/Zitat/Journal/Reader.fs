@@ -105,37 +105,38 @@ type JournalSet(root: string, log: string -> unit) =
     member _.Root = root
 
     member _.Refresh() =
-      lock gate (fun () ->
-        let onDisk =
-            if Directory.Exists root then
-                Directory.EnumerateFiles(root, "*.journal", SearchOption.AllDirectories)
-                |> Set.ofSeq
-            else
-                Set.empty
+        lock gate (fun () ->
+            let onDisk =
+                if Directory.Exists root then
+                    Directory.EnumerateFiles(root, "*.journal", SearchOption.AllDirectories)
+                    |> Set.ofSeq
+                else
+                    Set.empty
 
-        for path in files.Keys |> Seq.toArray do
-            if not (onDisk.Contains path) then close path
+            for path in files.Keys |> Seq.toArray do
+                if not (onDisk.Contains path) then
+                    close path
 
-        for path in onDisk do
-            let stale =
-                match files.TryGetValue path with
-                | true, file -> file.MappedLength <> FileInfo(path).Length
-                | _ -> true
+            for path in onDisk do
+                let stale =
+                    match files.TryGetValue path with
+                    | true, file -> file.MappedLength <> FileInfo(path).Length
+                    | _ -> true
 
-            if stale then
-                close path
+                if stale then
+                    close path
 
-                try
-                    files[path] <- JournalFile.Open path
-                with
-                // A file whose format we do not implement is fatal by
-                // design: reading it with the wrong assumptions would show
-                // wrong logs rather than none.
-                | UnsupportedJournal _ -> reraise ()
-                // Corruption is expected rather than exceptional, and the
-                // format requires readers to degrade around it. A file being
-                // created right now also lands here.
-                | CorruptJournal(path, reason) -> log $"skipping %s{path}: %s{reason}")
+                    try
+                        files[path] <- JournalFile.Open path
+                    with
+                    // A file whose format we do not implement is fatal by
+                    // design: reading it with the wrong assumptions would show
+                    // wrong logs rather than none.
+                    | UnsupportedJournal _ -> reraise ()
+                    // Corruption is expected rather than exceptional, and the
+                    // format requires readers to degrade around it. A file being
+                    // created right now also lands here.
+                    | CorruptJournal(path, reason) -> log $"skipping %s{path}: %s{reason}")
 
     /// Runs `action` against the open files with the set held still.
     member _.Use(action: JournalFile list -> 'a) =
@@ -157,8 +158,7 @@ type JournalReader(set: JournalSet) =
         match Array.IndexOf(payload, byte '=') with
         | -1 -> Encoding.UTF8.GetString payload, ""
         | at ->
-            Encoding.UTF8.GetString(payload, 0, at),
-            Encoding.UTF8.GetString(payload, at + 1, payload.Length - at - 1)
+            Encoding.UTF8.GetString(payload, 0, at), Encoding.UTF8.GetString(payload, at + 1, payload.Length - at - 1)
 
     /// The DATA objects a query's exact-value filters resolve to in one file.
     /// Returns None when a filter names a value this file never recorded, in
@@ -169,7 +169,14 @@ type JournalReader(set: JournalSet) =
             | None -> Some None
             | Some text ->
                 match file.FindData($"%s{field}=%s{text}") with
-                | ValueSome offset -> Some(Some { Field = field; Objects = [| offset |] })
+                | ValueSome offset ->
+                    Some(
+                        Some
+                            {
+                                Field = field
+                                Objects = [| offset |]
+                            }
+                    )
                 | ValueNone -> None
 
         let severities =
@@ -192,17 +199,24 @@ type JournalReader(set: JournalSet) =
                 if objects.IsEmpty then
                     None
                 else
-                    Some(Some { Field = Fields.Priority; Objects = List.toArray objects })
+                    Some(
+                        Some
+                            {
+                                Field = Fields.Priority
+                                Objects = List.toArray objects
+                            }
+                    )
 
-        let facility =
-            query.Facility |> Option.map (fun value -> $"%d{value}")
+        let facility = query.Facility |> Option.map (fun value -> $"%d{value}")
 
-        [ single Fields.Hostname query.Hostname
-          single Fields.Identifier query.Application
-          single Fields.Unit query.Unit
-          single Fields.BootId query.BootId
-          single Fields.Facility facility
-          severities ]
+        [
+            single Fields.Hostname query.Hostname
+            single Fields.Identifier query.Application
+            single Fields.Unit query.Unit
+            single Fields.BootId query.BootId
+            single Fields.Facility facility
+            severities
+        ]
         |> List.fold
             (fun state resolved ->
                 match state, resolved with
@@ -222,40 +236,57 @@ type JournalReader(set: JournalSet) =
             match direction with
             | Newest ->
                 let position = chain.LowerBound(file.EntryRealtime, instant + 1UL)
-                if position = 0L then None else Some(ValueSome chain[position - 1L])
+
+                if position = 0L then
+                    None
+                else
+                    Some(ValueSome chain[position - 1L])
             | Oldest ->
                 let position = chain.LowerBound(file.EntryRealtime, instant)
-                if position >= chain.Count then None else Some(ValueSome chain[position])
+
+                if position >= chain.Count then
+                    None
+                else
+                    Some(ValueSome chain[position])
 
     let textMatches (file: JournalFile) offset (text: string option) =
         match text with
         | None -> true
         | Some needle ->
             match file.EntryField(offset, messagePrefix) with
-            | ValueSome value ->
-                Encoding.UTF8
-                    .GetString(value)
-                    .Contains(needle, StringComparison.OrdinalIgnoreCase)
+            | ValueSome value -> Encoding.UTF8.GetString(value).Contains(needle, StringComparison.OrdinalIgnoreCase)
             | ValueNone -> false
 
     let materialize (file: JournalFile) offset =
         let fields = file.EntryFields offset |> Array.map decodePair |> List.ofArray
-        let lookup name = fields |> List.tryPick (fun (key, value) -> if key = name then Some value else None)
-        let number name = lookup name |> Option.bind (fun text -> match Int32.TryParse text with | true, v -> Some v | _ -> None)
+
+        let lookup name =
+            fields
+            |> List.tryPick (fun (key, value) -> if key = name then Some value else None)
+
+        let number name =
+            lookup name
+            |> Option.bind (fun text ->
+                match Int32.TryParse text with
+                | true, v -> Some v
+                | _ -> None)
+
         let realtime = file.EntryRealtime offset
 
-        { Cursor = Cursor.encode file.SeqnumId (file.EntrySeqnum offset) realtime
-          Realtime = Clock.toInstant realtime
-          Source = Source.ofPath file.Path
-          Hostname = lookup Fields.Hostname
-          Application = lookup Fields.Identifier
-          Unit = lookup Fields.Unit
-          ProcessId = lookup Fields.ProcessId
-          BootId = lookup Fields.BootId
-          Facility = number Fields.Facility
-          Severity = number Fields.Priority
-          Message = lookup Fields.Message |> Option.defaultValue ""
-          Fields = fields }
+        {
+            Cursor = Cursor.encode file.SeqnumId (file.EntrySeqnum offset) realtime
+            Realtime = Clock.toInstant realtime
+            Source = Source.ofPath file.Path
+            Hostname = lookup Fields.Hostname
+            Application = lookup Fields.Identifier
+            Unit = lookup Fields.Unit
+            ProcessId = lookup Fields.ProcessId
+            BootId = lookup Fields.BootId
+            Facility = number Fields.Facility
+            Severity = number Fields.Priority
+            Message = lookup Fields.Message |> Option.defaultValue ""
+            Fields = fields
+        }
 
     /// Walks every candidate file at once, always taking the entry that sorts
     /// next in `direction`, so the result is one ordered stream across senders.
@@ -265,106 +296,119 @@ type JournalReader(set: JournalSet) =
     /// is stable but arbitrary; at microsecond resolution this is not a case
     /// that arises in practice.
     member private _.Collect(query: LogQuery, direction: Direction) =
-      set.Use(fun openFiles ->
-        let limit = Math.Clamp(query.Limit, 1, 1000)
-        let cursor = query.Before |> Option.bind Cursor.decode
-        let sinceUsec = query.Since |> Option.map Clock.ofInstant
-        let untilUsec = query.Until |> Option.map Clock.ofInstant
+        set.Use(fun openFiles ->
+            let limit = Math.Clamp(query.Limit, 1, 1000)
+            let cursor = query.Before |> Option.bind Cursor.decode
+            let sinceUsec = query.Since |> Option.map Clock.ofInstant
+            let untilUsec = query.Until |> Option.map Clock.ofInstant
 
-        // A cursor tightens the bound that iteration starts from: paging back
-        // resumes below its timestamp, tailing resumes above it.
-        let cursorRealtime = cursor |> Option.map (fun (_, _, realtime) -> realtime)
+            // A cursor tightens the bound that iteration starts from: paging back
+            // resumes below its timestamp, tailing resumes above it.
+            let cursorRealtime = cursor |> Option.map (fun (_, _, realtime) -> realtime)
 
-        let upper =
-            match direction, cursorRealtime, untilUsec with
-            | Newest, Some position, Some bound -> Some(min position bound)
-            | Newest, Some position, None -> Some position
-            | _, _, bound -> bound
+            let upper =
+                match direction, cursorRealtime, untilUsec with
+                | Newest, Some position, Some bound -> Some(min position bound)
+                | Newest, Some position, None -> Some position
+                | _, _, bound -> bound
 
-        let lower =
-            match direction, cursorRealtime, sinceUsec with
-            | Oldest, Some position, Some bound -> Some(max position bound)
-            | Oldest, Some position, None -> Some position
-            | _, _, bound -> bound
+            let lower =
+                match direction, cursorRealtime, sinceUsec with
+                | Oldest, Some position, Some bound -> Some(max position bound)
+                | Oldest, Some position, None -> Some position
+                | _, _, bound -> bound
 
-        let startBound = match direction with | Newest -> upper | Oldest -> lower
-        let stopAt = match direction with | Newest -> lower | Oldest -> upper
+            let startBound =
+                match direction with
+                | Newest -> upper
+                | Oldest -> lower
 
-        let overlaps (file: JournalFile) =
-            (lower |> Option.forall (fun bound -> file.TailRealtime >= bound))
-            && (upper |> Option.forall (fun bound -> file.HeadRealtime <= bound))
+            let stopAt =
+                match direction with
+                | Newest -> lower
+                | Oldest -> upper
 
-        let candidates =
-            openFiles
-            |> List.filter (fun file ->
-                query.Source |> Option.forall (fun wanted -> Source.ofPath file.Path = wanted))
-            |> List.filter overlaps
-            |> List.choose (fun file ->
-                termsFor file query
-                |> Option.bind (fun terms ->
-                    boundFor file direction startBound
-                    |> Option.map (fun bound -> file, FileScan(file, terms, direction, bound))))
-            |> List.toArray
+            let overlaps (file: JournalFile) =
+                (lower |> Option.forall (fun bound -> file.TailRealtime >= bound))
+                && (upper |> Option.forall (fun bound -> file.HeadRealtime <= bound))
 
-        let heads = candidates |> Array.map (fun (_, scan) -> scan.Next())
-        let results = ResizeArray<LogEntry>()
-        let mutable running = true
+            let candidates =
+                openFiles
+                |> List.filter (fun file ->
+                    query.Source |> Option.forall (fun wanted -> Source.ofPath file.Path = wanted))
+                |> List.filter overlaps
+                |> List.choose (fun file ->
+                    termsFor file query
+                    |> Option.bind (fun terms ->
+                        boundFor file direction startBound
+                        |> Option.map (fun bound -> file, FileScan(file, terms, direction, bound))))
+                |> List.toArray
 
-        while running && results.Count < limit do
-            let mutable chosen = -1
-            let mutable chosenRealtime = 0UL
-            let mutable chosenSeqnum = 0UL
+            let heads = candidates |> Array.map (fun (_, scan) -> scan.Next())
+            let results = ResizeArray<LogEntry>()
+            let mutable running = true
 
-            for index in 0 .. candidates.Length - 1 do
-                match heads[index] with
-                | ValueNone -> ()
-                | ValueSome offset ->
-                    let file, _ = candidates[index]
-                    let realtime = file.EntryRealtime offset
-                    let seqnum = file.EntrySeqnum offset
+            while running && results.Count < limit do
+                let mutable chosen = -1
+                let mutable chosenRealtime = 0UL
+                let mutable chosenSeqnum = 0UL
 
-                    let better =
-                        chosen < 0
-                        || (match direction with
-                            | Newest -> realtime > chosenRealtime || (realtime = chosenRealtime && seqnum > chosenSeqnum)
-                            | Oldest -> realtime < chosenRealtime || (realtime = chosenRealtime && seqnum < chosenSeqnum))
+                for index in 0 .. candidates.Length - 1 do
+                    match heads[index] with
+                    | ValueNone -> ()
+                    | ValueSome offset ->
+                        let file, _ = candidates[index]
+                        let realtime = file.EntryRealtime offset
+                        let seqnum = file.EntrySeqnum offset
 
-                    if better then
-                        chosen <- index
-                        chosenRealtime <- realtime
-                        chosenSeqnum <- seqnum
+                        let better =
+                            chosen < 0
+                            || (match direction with
+                                | Newest ->
+                                    realtime > chosenRealtime
+                                    || (realtime = chosenRealtime && seqnum > chosenSeqnum)
+                                | Oldest ->
+                                    realtime < chosenRealtime
+                                    || (realtime = chosenRealtime && seqnum < chosenSeqnum))
 
-            if chosen < 0 then
-                running <- false
-            else
-                let file, scan = candidates[chosen]
-                let offset = heads[chosen].Value
+                        if better then
+                            chosen <- index
+                            chosenRealtime <- realtime
+                            chosenSeqnum <- seqnum
 
-                let past =
-                    match direction, stopAt with
-                    | Newest, Some bound -> chosenRealtime < bound
-                    | Oldest, Some bound -> chosenRealtime > bound
-                    | _ -> false
-
-                if past then
-                    // Entries only get further from the bound from here, so
-                    // this file is finished rather than merely skipped.
-                    heads[chosen] <- ValueNone
+                if chosen < 0 then
+                    running <- false
                 else
-                    let afterCursor =
-                        match direction, cursor with
-                        | Newest, Some(_, seqnum, realtime) ->
-                            chosenRealtime < realtime || (chosenRealtime = realtime && chosenSeqnum < seqnum)
-                        | Oldest, Some(_, seqnum, realtime) ->
-                            chosenRealtime > realtime || (chosenRealtime = realtime && chosenSeqnum > seqnum)
-                        | _ -> true
+                    let file, scan = candidates[chosen]
+                    let offset = heads[chosen].Value
 
-                    if afterCursor && textMatches file offset query.Text then
-                        results.Add(materialize file offset)
+                    let past =
+                        match direction, stopAt with
+                        | Newest, Some bound -> chosenRealtime < bound
+                        | Oldest, Some bound -> chosenRealtime > bound
+                        | _ -> false
 
-                    heads[chosen] <- scan.Next()
+                    if past then
+                        // Entries only get further from the bound from here, so
+                        // this file is finished rather than merely skipped.
+                        heads[chosen] <- ValueNone
+                    else
+                        let afterCursor =
+                            match direction, cursor with
+                            | Newest, Some(_, seqnum, realtime) ->
+                                chosenRealtime < realtime
+                                || (chosenRealtime = realtime && chosenSeqnum < seqnum)
+                            | Oldest, Some(_, seqnum, realtime) ->
+                                chosenRealtime > realtime
+                                || (chosenRealtime = realtime && chosenSeqnum > seqnum)
+                            | _ -> true
 
-        List.ofSeq results)
+                        if afterCursor && textMatches file offset query.Text then
+                            results.Add(materialize file offset)
+
+                        heads[chosen] <- scan.Next()
+
+            List.ofSeq results)
 
     /// Matching entries, newest first.
     member this.Search(query: LogQuery) = this.Collect(query, Newest)
@@ -374,12 +418,27 @@ type JournalReader(set: JournalSet) =
 
     member _.Status() =
         set.Use(fun files ->
-            let realtimes = files |> List.collect (fun file -> [ file.HeadRealtime; file.TailRealtime ])
+            let realtimes =
+                files |> List.collect (fun file -> [ file.HeadRealtime; file.TailRealtime ])
 
-            {| directory = set.Root
-               files = files.Length
-               entries = files |> List.sumBy _.EntryCount
-               bytes = files |> List.sumBy _.MappedLength
-               sources = files |> List.map (fun file -> Source.ofPath file.Path) |> List.distinct |> List.sort
-               oldest = realtimes |> function [] -> None | values -> Some(Clock.toInstant (List.min values))
-               newest = realtimes |> function [] -> None | values -> Some(Clock.toInstant (List.max values)) |})
+            {|
+                directory = set.Root
+                files = files.Length
+                entries = files |> List.sumBy _.EntryCount
+                bytes = files |> List.sumBy _.MappedLength
+                sources =
+                    files
+                    |> List.map (fun file -> Source.ofPath file.Path)
+                    |> List.distinct
+                    |> List.sort
+                oldest =
+                    realtimes
+                    |> function
+                        | [] -> None
+                        | values -> Some(Clock.toInstant (List.min values))
+                newest =
+                    realtimes
+                    |> function
+                        | [] -> None
+                        | values -> Some(Clock.toInstant (List.max values))
+            |})

@@ -1,4 +1,4 @@
-.PHONY: build test run publish clean
+.PHONY: build test run publish clean format format-check
 
 build:
 	dotnet build Zitat.slnx
@@ -14,3 +14,9 @@ publish:
 
 clean:
 	dotnet clean Zitat.slnx
+
+format:
+	dotnet fantomas src tests
+
+format-check:
+	dotnet fantomas --check src tests

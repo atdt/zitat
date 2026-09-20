@@ -23,7 +23,10 @@ type private ChainCursor(chain: EntryArrayChain, direction: Direction) =
     let mutable index = -1L
 
     member _.Current =
-        if index < 0L || index >= count then ValueNone else ValueSome chain[index]
+        if index < 0L || index >= count then
+            ValueNone
+        else
+            ValueSome chain[index]
 
     /// Positions at the first entry at or beyond `bound`, or at the extreme
     /// end of the chain when unbounded.
@@ -35,14 +38,25 @@ type private ChainCursor(chain: EntryArrayChain, direction: Direction) =
             | Newest, ValueSome offset ->
                 // The last entry at or below the bound.
                 let position = chain.LowerBoundOffset offset
-                if position < count && chain[position] = offset then position else position - 1L
+
+                if position < count && chain[position] = offset then
+                    position
+                else
+                    position - 1L
             | Oldest, ValueSome offset -> chain.LowerBoundOffset offset
 
         this.Current
 
     member _.MoveNext() =
-        index <- (match direction with Newest -> index - 1L | Oldest -> index + 1L)
-        if index < 0L || index >= count then ValueNone else ValueSome chain[index]
+        index <-
+            (match direction with
+             | Newest -> index - 1L
+             | Oldest -> index + 1L)
+
+        if index < 0L || index >= count then
+            ValueNone
+        else
+            ValueSome chain[index]
 
 /// The union of several chains, presented as one ordered stream. A term such
 /// as `severity:<=3` spans one chain per admitted priority value.
@@ -64,7 +78,8 @@ type private UnionCursor(chains: EntryArrayChain[], direction: Direction) =
                     | Newest -> offset > chosen
                     | Oldest -> offset < chosen
 
-                if better then best <- ValueSome offset
+                if better then
+                    best <- ValueSome offset
 
         current <- best
         best
@@ -84,7 +99,8 @@ type private UnionCursor(chains: EntryArrayChain[], direction: Direction) =
         | ValueNone -> ValueNone
         | ValueSome emitted ->
             for cursor in cursors do
-                if cursor.Current = ValueSome emitted then cursor.MoveNext() |> ignore
+                if cursor.Current = ValueSome emitted then
+                    cursor.MoveNext() |> ignore
 
             recompute ()
 
@@ -100,7 +116,8 @@ type private UnionCursor(chains: EntryArrayChain[], direction: Direction) =
 /// avoiding its machinery.
 [<Sealed>]
 type FileScan(file: JournalFile, terms: Term list, direction: Direction, bound: int64 voption) =
-    let chainsFor (term: Term) = term.Objects |> Array.map file.DataChain
+    let chainsFor (term: Term) =
+        term.Objects |> Array.map file.DataChain
 
     let sized =
         terms
@@ -132,7 +149,8 @@ type FileScan(file: JournalFile, terms: Term list, direction: Direction, bound: 
     let satisfies entryOffset =
         others
         |> List.forall (fun term ->
-            term.Objects |> Array.exists (fun object' -> file.EntryReferences(entryOffset, object')))
+            term.Objects
+            |> Array.exists (fun object' -> file.EntryReferences(entryOffset, object')))
 
     let mutable started = false
 

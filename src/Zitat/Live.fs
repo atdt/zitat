@@ -4,10 +4,11 @@ open System
 open System.Collections.Concurrent
 open System.Threading.Channels
 
-type LiveSubscription = {
-    Reader: ChannelReader<LogEntry>
-    Dispose: unit -> unit
-}
+type LiveSubscription =
+    {
+        Reader: ChannelReader<LogEntry>
+        Dispose: unit -> unit
+    }
 
 type LiveHub() =
     let subscribers = ConcurrentDictionary<Guid, Channel<LogEntry>>()
@@ -26,8 +27,9 @@ type LiveHub() =
 
         {
             Reader = channel.Reader
-            Dispose = fun () ->
-                match subscribers.TryRemove id with
-                | true, removed -> removed.Writer.TryComplete() |> ignore
-                | _ -> ()
+            Dispose =
+                fun () ->
+                    match subscribers.TryRemove id with
+                    | true, removed -> removed.Writer.TryComplete() |> ignore
+                    | _ -> ()
         }

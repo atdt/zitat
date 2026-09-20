@@ -4,7 +4,12 @@ open System
 open System.Text
 
 [<Struct>]
-type private Segment = { Start: int64; Items: int64; Count: int64 }
+type private Segment =
+    {
+        Start: int64
+        Items: int64
+        Count: int64
+    }
 
 /// Random access over a chain of ENTRY_ARRAY objects.
 ///
@@ -13,8 +18,7 @@ type private Segment = { Start: int64; Items: int64; Count: int64 }
 /// are appended, so a chain covering n entries has O(log n) segments and the
 /// segment table is cheap to build and keep.
 [<Sealed>]
-type EntryArrayChain
-    (mapping: Mapping, compact: bool, head: int64, first: int64 voption, total: int64) =
+type EntryArrayChain(mapping: Mapping, compact: bool, head: int64, first: int64 voption, total: int64) =
 
     let width = if compact then 4L else 8L
     let inlineCount = if first.IsSome then 1L else 0L
@@ -36,9 +40,11 @@ type EntryArrayChain
                 let count = min capacity remaining
 
                 found.Add
-                    { Start = index
-                      Items = arrayOffset + Format.EntryArray.Items
-                      Count = count }
+                    {
+                        Start = index
+                        Items = arrayOffset + Format.EntryArray.Items
+                        Count = count
+                    }
 
                 index <- index + count
                 remaining <- remaining - count
@@ -57,7 +63,7 @@ type EntryArrayChain
     member _.Count = count.Value
 
     member _.Item
-        with get (index: int64) : int64 =
+        with get (index: int64): int64 =
             match first with
             | ValueSome entry when index = 0L -> entry
             | _ ->
@@ -111,7 +117,11 @@ type EntryArrayChain
 
         while low < high do
             let mid = low + (high - low) / 2L
-            if keyOf this[mid] < target then low <- mid + 1L else high <- mid
+
+            if keyOf this[mid] < target then
+                low <- mid + 1L
+            else
+                high <- mid
 
         low
 
@@ -124,8 +134,12 @@ type EntryArrayChain
 type JournalFile private (mapping: Mapping) =
     let path = mapping.Path
 
-    let compatible = LanguagePrimitives.EnumOfValue<uint32, CompatibleFlags>(mapping.ReadUInt32 8L)
-    let incompatible = LanguagePrimitives.EnumOfValue<uint32, IncompatibleFlags>(mapping.ReadUInt32 12L)
+    let compatible =
+        LanguagePrimitives.EnumOfValue<uint32, CompatibleFlags>(mapping.ReadUInt32 8L)
+
+    let incompatible =
+        LanguagePrimitives.EnumOfValue<uint32, IncompatibleFlags>(mapping.ReadUInt32 12L)
+
     let compact = incompatible.HasFlag IncompatibleFlags.Compact
     let headerSize = int64 (mapping.ReadUInt64 88L)
     let fileId = mapping.ToArray(24L, 16)
@@ -134,7 +148,12 @@ type JournalFile private (mapping: Mapping) =
     let dataHashTableSize = int64 (mapping.ReadUInt64 112L)
 
     let entryItemWidth = if compact then 4L else 16L
-    let dataPayloadOffset = if compact then Format.Data.CompactPayload else Format.Data.RegularPayload
+
+    let dataPayloadOffset =
+        if compact then
+            Format.Data.CompactPayload
+        else
+            Format.Data.RegularPayload
 
     /// Flags this reader understands. Anything else means the file uses a
     /// feature whose absence would make us misread it, so we refuse it.
@@ -150,7 +169,9 @@ type JournalFile private (mapping: Mapping) =
             if mapping.ReadUInt64 0L <> Format.Signature then
                 raise (CorruptJournal(path, "missing LPKSHHRH signature"))
 
-            let incompatible = LanguagePrimitives.EnumOfValue<uint32, IncompatibleFlags>(mapping.ReadUInt32 12L)
+            let incompatible =
+                LanguagePrimitives.EnumOfValue<uint32, IncompatibleFlags>(mapping.ReadUInt32 12L)
+
             let unknown = incompatible &&& ~~~supported
 
             if unknown <> IncompatibleFlags.None then
@@ -162,12 +183,7 @@ type JournalFile private (mapping: Mapping) =
                 )
 
             if not (incompatible.HasFlag IncompatibleFlags.KeyedHash) then
-                raise (
-                    UnsupportedJournal(
-                        path,
-                        "file predates keyed hashing and would need the Jenkins lookup3 hash"
-                    )
-                )
+                raise (UnsupportedJournal(path, "file predates keyed hashing and would need the Jenkins lookup3 hash"))
 
             let headerSize = int64 (mapping.ReadUInt64 88L)
 
@@ -233,14 +249,18 @@ type JournalFile private (mapping: Mapping) =
         match this.Compression offset with
         | Uncompressed -> mapping.ToArray(offset + dataPayloadOffset, length)
         | Zstd -> Zstd.decompress (mapping.Span(offset + dataPayloadOffset, length))
-        | other ->
-            raise (UnsupportedJournal(path, $"data object at %d{offset} uses %A{other} compression"))
+        | other -> raise (UnsupportedJournal(path, $"data object at %d{offset} uses %A{other} compression"))
 
     // ---- Entries -------------------------------------------------------
 
-    member _.EntryRealtime(offset: int64) = mapping.ReadUInt64(offset + Format.Entry.Realtime)
-    member _.EntrySeqnum(offset: int64) = mapping.ReadUInt64(offset + Format.Entry.Seqnum)
-    member _.EntryBootId(offset: int64) = mapping.ToArray(offset + Format.Entry.BootId, 16)
+    member _.EntryRealtime(offset: int64) =
+        mapping.ReadUInt64(offset + Format.Entry.Realtime)
+
+    member _.EntrySeqnum(offset: int64) =
+        mapping.ReadUInt64(offset + Format.Entry.Seqnum)
+
+    member _.EntryBootId(offset: int64) =
+        mapping.ToArray(offset + Format.Entry.BootId, 16)
 
     member this.EntryItemCount(offset: int64) =
         (this.ObjectSize offset - Format.Entry.Items) / entryItemWidth
@@ -264,7 +284,9 @@ type JournalFile private (mapping: Mapping) =
         let mutable found = false
 
         while not found && index < count do
-            if this.EntryItem(entryOffset, index) = dataOffset then found <- true
+            if this.EntryItem(entryOffset, index) = dataOffset then
+                found <- true
+
             index <- index + 1L
 
         found
@@ -282,6 +304,7 @@ type JournalFile private (mapping: Mapping) =
             && mapping.Span(dataOffset + dataPayloadOffset, prefix.Length).SequenceEqual prefix
         | _ ->
             let payload = this.DataPayload dataOffset
+
             payload.Length >= prefix.Length
             && ReadOnlySpan<byte>(payload, 0, prefix.Length).SequenceEqual prefix
 
@@ -308,8 +331,7 @@ type JournalFile private (mapping: Mapping) =
         this.CheckObject(entryOffset, Format.ObjectType.Entry)
         let count = this.EntryItemCount entryOffset
 
-        Array.init (int count) (fun index ->
-            this.DataPayload(this.EntryItem(entryOffset, int64 index)))
+        Array.init (int count) (fun index -> this.DataPayload(this.EntryItem(entryOffset, int64 index)))
 
     // ---- Indexes -------------------------------------------------------
 
@@ -321,10 +343,18 @@ type JournalFile private (mapping: Mapping) =
     /// first entry is stored inline in the DATA object itself.
     member _.DataChain(dataOffset: int64) =
         let inlineEntry = int64 (mapping.ReadUInt64(dataOffset + Format.Data.EntryOffset))
-        let arrayHead = int64 (mapping.ReadUInt64(dataOffset + Format.Data.EntryArrayOffset))
+
+        let arrayHead =
+            int64 (mapping.ReadUInt64(dataOffset + Format.Data.EntryArrayOffset))
+
         let total = int64 (mapping.ReadUInt64(dataOffset + Format.Data.NEntries))
 
-        let first = if inlineEntry = 0L then ValueNone else ValueSome inlineEntry
+        let first =
+            if inlineEntry = 0L then
+                ValueNone
+            else
+                ValueSome inlineEntry
+
         EntryArrayChain(mapping, compact, arrayHead, first, total)
 
     /// Locates the DATA object holding exactly these `FIELD=value` bytes.

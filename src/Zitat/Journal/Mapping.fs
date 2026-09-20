@@ -33,13 +33,7 @@ type Mapping private (path: string, mapped: MemoryMappedFile, view: MemoryMapped
             raise (CorruptJournal(path, $"file is %d{length} bytes, shorter than a journal header"))
 
         let mapped =
-            MemoryMappedFile.CreateFromFile(
-                path,
-                FileMode.Open,
-                null,
-                0L,
-                MemoryMappedFileAccess.Read
-            )
+            MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, 0L, MemoryMappedFileAccess.Read)
 
         let view = mapped.CreateViewAccessor(0L, length, MemoryMappedFileAccess.Read)
         new Mapping(path, mapped, view, length)
@@ -78,8 +72,7 @@ type Mapping private (path: string, mapped: MemoryMappedFile, view: MemoryMapped
         let address = this.Address(offset, int64 size)
         ReadOnlySpan<byte>(address.ToPointer(), size)
 
-    member this.ToArray(offset: int64, size: int) : byte[] =
-        this.Span(offset, size).ToArray()
+    member this.ToArray(offset: int64, size: int) : byte[] = this.Span(offset, size).ToArray()
 
     interface IDisposable with
         member _.Dispose() =

@@ -19,8 +19,11 @@ module Program =
         builder.Services.AddSingleton(options) |> ignore
 
         builder.Services.AddSingleton<JournalSet>(fun services ->
-            let logger = services.GetRequiredService<ILoggerFactory>().CreateLogger "Zitat.Journal"
-            let set = new JournalSet(options.JournalDirectory, fun message -> logger.LogWarning message)
+            let logger =
+                services.GetRequiredService<ILoggerFactory>().CreateLogger "Zitat.Journal"
+
+            let set =
+                new JournalSet(options.JournalDirectory, fun message -> logger.LogWarning message)
             // Serve the first request against a populated set rather than an
             // empty one.
             set.Refresh()

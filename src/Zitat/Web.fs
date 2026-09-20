@@ -78,7 +78,8 @@ module Web =
             Since = since
             Until = timestamp "until" context
             Before = value "before" context
-            Limit = integer "limit" context |> Option.defaultValue 200 }
+            Limit = integer "limit" context |> Option.defaultValue 200
+        }
 
     let private logs (reader: JournalReader) (context: HttpContext) =
         let parsed = query context
@@ -87,12 +88,21 @@ module Web =
 
         // A full page implies there may be more; a short one is the end.
         let next =
-            if items.Length = limit then items |> List.tryLast |> Option.map _.Cursor else None
+            if items.Length = limit then
+                items |> List.tryLast |> Option.map _.Cursor
+            else
+                None
 
         Response.ofJsonOptions jsonOptions {| items = items; nextBefore = next |} context
 
     let private status (reader: JournalReader) context =
-        Response.ofJsonOptions jsonOptions {| status = "ok"; journal = reader.Status() |} context
+        Response.ofJsonOptions
+            jsonOptions
+            {|
+                status = "ok"
+                journal = reader.Status()
+            |}
+            context
 
     let private stream (live: LiveHub) (context: HttpContext) : Task =
         task {
@@ -119,9 +129,10 @@ module Web =
         }
         :> Task
 
-    let endpoints reader live = [
-        get "/api/logs" (logs reader)
-        get "/api/tail" (stream live)
-        get "/api/status" (status reader)
-        get "/" (fun context -> context.Response.SendFileAsync("wwwroot/index.html"))
-    ]
+    let endpoints reader live =
+        [
+            get "/api/logs" (logs reader)
+            get "/api/tail" (stream live)
+            get "/api/status" (status reader)
+            get "/" (fun context -> context.Response.SendFileAsync("wwwroot/index.html"))
+        ]
