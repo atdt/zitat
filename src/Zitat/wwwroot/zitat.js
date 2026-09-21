@@ -1,6 +1,5 @@
 const form = document.querySelector("#filters");
 const search = document.querySelector("#search");
-const range = document.querySelector("#range");
 const list = document.querySelector("#logs");
 const empty = document.querySelector("#empty");
 const older = document.querySelector("#older");
@@ -12,6 +11,17 @@ let stream = null;
 let liveAfter = null;
 let liveSince = null;
 let controller = null;
+
+function formatTime(date) {
+  const pad = (n, len = 2) => String(n).padStart(len, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${
+    pad(date.getDate())
+  } ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${
+      pad(date.getSeconds())
+    }.` +
+    pad(date.getMilliseconds(), 3);
+}
 
 const severityNames = [
   "emerg",
@@ -53,7 +63,6 @@ const facilityNames = [
 function parameters() {
   const params = new URLSearchParams();
   if (search.value) params.set("q", search.value);
-  if (range.value) params.set("range", range.value);
   return params;
 }
 
@@ -95,8 +104,7 @@ function render(
   if (document.querySelector(`[data-cursor="${cursor}"]`)) return;
   const row = template.content.firstElementChild.cloneNode(true);
   row.dataset.cursor = cursor;
-  row.querySelector("time").textContent = new Date(realtime)
-    .toLocaleString();
+  row.querySelector("time").textContent = formatTime(new Date(realtime));
 
   field(row, ".host", hostname ?? source, "host", hostname);
   field(
@@ -180,7 +188,8 @@ function connect() {
   stream.onopen = () => {
     showSummary();
   };
-  liveButton.textContent = "Pause";
+  liveButton.textContent = "⏸";
+  liveButton.setAttribute("aria-label", "Pause live updates");
   liveButton.disabled = false;
 }
 
@@ -212,12 +221,12 @@ liveButton.onclick = () => {
   if (stream) {
     stream.close();
     stream = null;
-    liveButton.textContent = "Resume";
+    liveButton.textContent = "▶";
+    liveButton.setAttribute("aria-label", "Resume live updates");
   } else connect();
 };
 
 const initial = new URLSearchParams(location.search);
 search.value = initial.get("q") || "";
-range.value = initial.get("range") ?? "1h";
 showSummary();
 refresh();
