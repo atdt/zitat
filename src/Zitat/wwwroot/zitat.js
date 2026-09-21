@@ -9,7 +9,6 @@ const template = document.querySelector("#row");
 const syntaxToggle = document.querySelector("#syntax-toggle");
 const syntaxHelp = document.querySelector("#syntax-help");
 const suggestions = document.querySelector("#suggestions");
-const searchExample = document.querySelector("#search-example");
 const searchError = document.querySelector("#search-error");
 const effectiveRange = document.querySelector("#effective-range");
 let cursor = null;
@@ -86,10 +85,6 @@ const values = {
 let selectedSuggestion = 0;
 let suggestionItems = [];
 
-function updateExample() {
-  searchExample.hidden = search.value.trim().length > 0;
-}
-
 function closeSuggestions() {
   suggestions.hidden = true;
   suggestions.replaceChildren();
@@ -157,7 +152,6 @@ function chooseSuggestion(index) {
     (search.value.slice(search.selectionStart).match(/^\S*/)?.[0].length ?? 0);
   search.setRangeText(item.fragment, start, end, "end");
   search.focus();
-  updateExample();
   showSuggestions();
 }
 
@@ -189,13 +183,54 @@ function parameters() {
   return params;
 }
 
+// Query.fs folds each selector into one field, so a repeated one silently
+// wins over the earlier; replacing keeps the box honest about the query.
 function appendFilter(name, value) {
-  search.value = `${search.value.trim()} ${name}:${value}`.trim();
+  const existing = new RegExp(`(^|\\s)${name}:("[^"]*"|\\S*)`, "g");
+  let replaced = false;
+  const rest = search.value.replace(existing, (_, lead) => {
+    if (replaced) return "";
+    replaced = true;
+    return `${lead}${name}:${value}`;
+  });
+  search.value = replaced ? rest.trim() : `${rest.trim()} ${name}:${value}`.trim();
   refresh();
 }
 
 function quote(value) {
   return /\s/.test(value) ? `"${value}"` : value;
+}
+
+// Rows outnumber the ones anyone opens, so the field list is built on demand.
+const rowFields = new WeakMap();
+
+// Reader.fs derives the row's own columns from these, so the panel omits them.
+const shownFields = new Set([
+  "MESSAGE",
+  "PRIORITY",
+  "SYSLOG_FACILITY",
+  "SYSLOG_IDENTIFIER",
+  "_HOSTNAME",
+  "_PID",
+  "_SYSTEMD_UNIT",
+]);
+
+function toggleDetails(row) {
+  const details = row.querySelector(".details");
+  if (!details.children.length) {
+    for (const [name, value] of rowFields.get(row)) {
+      if (shownFields.has(name)) continue;
+      const term = document.createElement("dt");
+      term.textContent = name;
+      const description = document.createElement("dd");
+      description.textContent = value;
+      details.append(term, description);
+    }
+  }
+  details.hidden = !details.hidden;
+  const toggle = row.querySelector(".toggle");
+  toggle.setAttribute("aria-expanded", String(!details.hidden));
+  toggle.textContent = details.hidden ? "▸" : "▾";
 }
 
 function field(row, selector, text, filter, value) {
@@ -248,9 +283,7 @@ function render(
   field(row, ".severity", severityName, "severity", severityName);
 
   row.querySelector(".message").textContent = message;
-  // The row shows selected fields; its tooltip exposes all journal fields.
-  row.title = fields.map(([name, value]) => `${name}=${value}`)
-    .join("\n");
+  rowFields.set(row, fields);
   prepend ? list.prepend(row) : list.append(row);
 }
 
@@ -294,19 +327,6 @@ async function load(append = false) {
   }
 }
 
-async function showSummary() {
-  const response = await fetch("/api/status");
-  if (!response.ok) return;
-  const { journal } = await response.json();
-  const entries = journal.entries.toLocaleString();
-  const senders = journal.sources.length;
-  notice.textContent =
-    `${entries} entries from ${senders} ${
-      senders === 1 ? "source" : "sources"
-    }` +
-    ` in ${journal.files} journal files.`;
-}
-
 function connect() {
   stream?.close();
   const params = parameters();
@@ -320,9 +340,6 @@ function connect() {
   };
   stream.onerror = () => {
     notice.textContent = "Live connection interrupted; reconnecting.";
-  };
-  stream.onopen = () => {
-    showSummary();
   };
   liveButton.textContent = "⏸";
   liveButton.setAttribute("aria-label", "Pause live updates");
@@ -354,7 +371,6 @@ form.onsubmit = (event) => {
 };
 search.oninput = () => {
   clearSearchError();
-  updateExample();
   showSuggestions();
 };
 search.onfocus = showSuggestions;
@@ -383,10 +399,10 @@ document.addEventListener("click", (event) => {
     syntaxToggle.setAttribute("aria-expanded", "false");
   }
 });
-searchExample.querySelector("button").onclick = () => {
-  search.value = "severity:err since:now-30m";
-  updateExample();
-  refresh();
+list.onclick = (event) => {
+  if (event.target.closest(".field") || getSelection().toString()) return;
+  const row = event.target.closest("li");
+  if (row) toggleDetails(row);
 };
 older.onclick = () =>
   load(true).catch((error) => {
@@ -403,6 +419,4 @@ liveButton.onclick = () => {
 
 const initial = new URLSearchParams(location.search);
 search.value = initial.get("q") || "";
-updateExample();
-showSummary();
 refresh();

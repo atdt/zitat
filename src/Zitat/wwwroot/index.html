@@ -14,7 +14,7 @@
           <div class="search-line">
             <input id="search" name="q" type="search" autocomplete="off"
               aria-label="Search logs" aria-controls="suggestions"
-              placeholder="Search logs">
+              placeholder="e.g. severity:err since:now-30m">
             <button id="syntax-toggle" type="button" aria-label="Search syntax"
               aria-expanded="false" aria-controls="syntax-help">?</button>
           </div>
@@ -32,11 +32,10 @@
             <a href="/search-reference.html">Full search reference</a>
           </div>
         </div>
-        <button type="submit">Search</button>
+        <button type="submit" aria-label="Search">⌕</button>
         <button id="live" type="button" disabled
           aria-label="Pause live updates">⏯</button>
       </form>
-      <div id="search-example">Example: <button type="button">severity:err since:now-30m</button></div>
       <div id="search-error" role="alert" hidden></div>
       <div id="effective-range" hidden></div>
       <div id="notice" role="status"></div>
@@ -48,6 +47,8 @@
     </main>
     <template id="row">
       <li>
+        <button class="toggle" type="button" aria-expanded="false"
+          aria-label="Show all journal fields">▸</button>
         <time></time>
         <button class="host field"></button>
         <button class="app field"></button>
@@ -55,6 +56,7 @@
         <button class="facility field"></button>
         <button class="severity field"></button>
         <span class="message"></span>
+        <dl class="details" hidden></dl>
       </li>
     </template>
     <script src="/zitat.js"></script>
