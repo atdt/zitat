@@ -3,8 +3,15 @@
     <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>zitat</AssemblyName>
     <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <!-- Trimming requires a self-contained publish; leave a framework-dependent
+       `dotnet publish` working. `full` overrides the web SDK's default of
+       `partial`: nothing here serializes or binds by reflection, and
+       TreatWarningsAsErrors turns any future trim warning into a build
+       failure. -->
+  <PropertyGroup Condition="'$(SelfContained)' == 'true'">
     <PublishTrimmed>true</PublishTrimmed>
-    <TrimMode>partial</TrimMode>
+    <TrimMode>full</TrimMode>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Journal/Format.fs" />
@@ -22,9 +29,6 @@
     <Compile Include="WebJson.fs" />
     <Compile Include="Web.fs" />
     <Compile Include="Program.fs" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="../Zitat.Json/Zitat.Json.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Falco" Version="5.2.0" />

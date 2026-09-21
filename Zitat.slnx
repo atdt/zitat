@@ -1,5 +1,4 @@
 <Solution>
-  <Project Path="src/Zitat.Json/Zitat.Json.csproj" />
   <Project Path="src/Zitat/Zitat.fsproj" />
   <Project Path="tests/Zitat.Tests/Zitat.Tests.fsproj" />
 </Solution>

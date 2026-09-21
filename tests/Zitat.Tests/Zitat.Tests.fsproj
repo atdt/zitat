@@ -10,6 +10,7 @@
     <Compile Include="QueryTests.fs" />
     <Compile Include="WebTests.fs" />
     <Compile Include="CorpusTests.fs" />
+    <Compile Include="WebJsonTests.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />

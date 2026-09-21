@@ -91,7 +91,16 @@ module Web =
                 else
                     None
 
-            WebJson.logPage items next liveAfter liveSince parsed.Since parsed.Until context
+            WebJson.writeLogPage
+                {
+                    Items = items
+                    NextBefore = next
+                    LiveAfter = liveAfter
+                    LiveSince = liveSince
+                    EffectiveSince = parsed.Since
+                    EffectiveUntil = parsed.Until
+                }
+                context
 
     let private resume (context: HttpContext) =
         let after, afterErrors = validated "after" Cursor.validate context
@@ -140,7 +149,7 @@ module Web =
                     checkpoint <- Some entry.Cursor
 
                     if Query.matches filter entry then
-                        let json = WebJson.entry entry
+                        let json = WebJson.serializeEntry entry
 
                         do!
                             context.Response.WriteAsync(
@@ -212,5 +221,5 @@ module Web =
         [
             get "/api/logs" (logs reader)
             get "/api/tail" (stream stopping reader live)
-            get "/api/status" (WebJson.status reader)
+            get "/api/status" (WebJson.writeStatus reader)
         ]
