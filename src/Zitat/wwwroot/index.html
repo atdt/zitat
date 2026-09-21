@@ -10,18 +10,41 @@
     <header>
       <form id="filters">
         <div class="brand">Zitat</div>
-        <input id="search" name="q" type="search"
-          placeholder="Search logs; host:, app:, unit:, source:, boot:, facility:, severity:, since:, until:">
+        <div class="search-area">
+          <div class="search-line">
+            <input id="search" name="q" type="search" autocomplete="off"
+              aria-label="Search logs" aria-controls="suggestions"
+              placeholder="Search logs">
+            <button id="syntax-toggle" type="button" aria-label="Search syntax"
+              aria-expanded="false" aria-controls="syntax-help">?</button>
+          </div>
+          <div id="suggestions" role="listbox" hidden></div>
+          <div id="syntax-help" hidden>
+            <strong>Search syntax</strong>
+            <dl>
+              <div><dt><code>host:iron</code></dt><dd>Exact host</dd></div>
+              <div><dt><code>app:sshd</code></dt><dd>Application</dd></div>
+              <div><dt><code>severity:&lt;=err</code></dt><dd>Error or more severe</dd></div>
+              <div><dt><code>facility:auth</code></dt><dd>Journal facility</dd></div>
+              <div><dt><code>since:now-30m</code></dt><dd>Start time, inclusive</dd></div>
+              <div><dt><code>until:2026-09-21</code></dt><dd>End time, exclusive</dd></div>
+            </dl>
+            <a href="/search-reference.html">Full search reference</a>
+          </div>
+        </div>
         <button type="submit">Search</button>
         <button id="live" type="button" disabled
           aria-label="Pause live updates">⏯</button>
       </form>
+      <div id="search-example">Example: <button type="button">severity:err since:now-30m</button></div>
+      <div id="search-error" role="alert" hidden></div>
+      <div id="effective-range" hidden></div>
       <div id="notice" role="status"></div>
     </header>
     <main>
       <div id="empty" hidden>No matching logs.</div>
       <ol id="logs" aria-live="polite"></ol>
-      <button id="older" type="button">Load older</button>
+      <button id="older" type="button" hidden>Load older</button>
     </main>
     <template id="row">
       <li>

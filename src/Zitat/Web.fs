@@ -105,6 +105,8 @@ module Web =
                     nextBefore = next
                     liveAfter = liveAfter
                     liveSince = liveSince
+                    effectiveSince = parsed.Since
+                    effectiveUntil = parsed.Until
                 |}
                 context
 

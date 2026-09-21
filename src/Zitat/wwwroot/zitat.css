@@ -43,8 +43,122 @@ button {
   font: inherit;
 }
 #search {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+.search-area {
+  position: relative;
   flex: 1;
   min-width: 20rem;
+}
+.search-line {
+  display: flex;
+  align-items: center;
+  border: 1px solid #3a4548;
+  border-radius: 0.25rem;
+  background: #22292c;
+}
+.search-line:focus-within {
+  border-color: #65d6ad;
+}
+#search[aria-invalid="true"] {
+  text-decoration: underline wavy #ef8b7d;
+  text-underline-offset: 0.2rem;
+}
+#syntax-toggle {
+  border: 0;
+  background: transparent;
+  color: #91a49f;
+  font-weight: 700;
+}
+#syntax-help,
+#suggestions {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  z-index: 4;
+  width: min(34rem, 90vw);
+  max-height: 24rem;
+  overflow: auto;
+  border: 1px solid #3a4548;
+  border-radius: 0.3rem;
+  background: #1d2527;
+  box-shadow: 0 0.6rem 1.5rem #0008;
+  padding: 0.75rem;
+}
+#syntax-help[hidden],
+#suggestions[hidden],
+#search-example[hidden],
+#search-error[hidden] {
+  display: none;
+}
+#syntax-help dl {
+  margin: 0.6rem 0;
+}
+#syntax-help dl > div,
+#suggestions button {
+  display: grid;
+  grid-template-columns: 19ch 1fr;
+  gap: 0.6rem;
+  align-items: baseline;
+}
+#syntax-help dl > div {
+  padding: 0.22rem 0;
+}
+#syntax-help dd {
+  margin: 0;
+  color: #a8b6b1;
+}
+#suggestions {
+  padding: 0.3rem;
+}
+#suggestions button {
+  width: 100%;
+  border: 0;
+  text-align: left;
+  background: transparent;
+}
+#suggestions button[aria-selected="true"],
+#suggestions button:hover {
+  background: #30413e;
+}
+#suggestions span {
+  color: #a8b6b1;
+}
+#search-example,
+#search-error {
+  padding-top: 0.35rem;
+}
+#search-example {
+  color: #81918c;
+}
+#search-example button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: #91a49f;
+}
+#search-error {
+  color: #ef8b7d;
+}
+#effective-range {
+  padding-top: 0.35rem;
+  color: #91a49f;
+}
+#effective-range[hidden] {
+  display: none;
+}
+#search-error code {
+  display: inline-block;
+  margin-top: 0.25rem;
+  text-decoration: underline wavy;
+  text-underline-offset: 0.2rem;
+}
+a {
+  color: #65d6ad;
 }
 button {
   cursor: pointer;
@@ -67,7 +181,7 @@ ol {
   margin: 0;
   padding: 0;
 }
-li {
+#logs > li {
   display: grid;
   grid-template-columns: 23ch 12ch 15ch 19ch 9ch 9ch minmax(27ch, 1fr);
   gap: 0.5rem;
@@ -110,13 +224,29 @@ time {
   display: none;
 }
 @media (max-width: 50em) {
-  #search {
+  .search-area {
     min-width: 14rem;
   }
-  li {
+  #logs > li {
     grid-template-columns: 1fr 1fr;
   }
   .message {
     grid-column: 1 / -1;
   }
+}
+.reference {
+  max-width: 76rem;
+  padding: 1.2rem;
+  line-height: 1.5;
+}
+.reference table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.reference th,
+.reference td {
+  padding: 0.5rem;
+  border-bottom: 1px solid #30383b;
+  text-align: left;
+  vertical-align: top;
 }

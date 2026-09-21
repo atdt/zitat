@@ -75,20 +75,44 @@ module QueryTests =
     [<InlineData("severity:8")>]
     [<InlineData("since:bad")>]
     [<InlineData("since:-1h")>]
+    [<InlineData("since:30m")>]
     [<InlineData("since:NaNh")>]
     [<InlineData("until:bad")>]
+    [<InlineData("since:now-0m")>]
+    [<InlineData("since:now-NaNm")>]
+    [<InlineData("until:2026-09-21T09:00:00")>]
+    [<InlineData("since:2026-02-30")>]
     let ``invalid named filters are rejected`` text =
         Assert.True(Query.parseText text |> Result.isError)
 
     [<Fact>]
-    let ``since accepts a relative duration`` () =
+    let ``since accepts a relative time point`` () =
         let before = DateTimeOffset.UtcNow.AddHours(-1.)
 
-        match Query.parseText "since:1.5h" with
+        match Query.parseText "since:now-1.5h" with
         | Ok parsed ->
             Assert.True(parsed.Since.IsSome)
             Assert.InRange(parsed.Since.Value, before.AddMinutes(-31.), before.AddMinutes(-29.))
         | Error error -> failwith error
+
+    [<Fact>]
+    let ``relative time points share one clock value`` () =
+        let result = parse "since:now-30m until:now"
+        Assert.Equal(TimeSpan.FromMinutes 30., result.Until.Value - result.Since.Value)
+
+    [<Fact>]
+    let ``relative time accepts seconds and weeks`` () =
+        let result = parse "since:now-3w until:now+30s"
+
+        Assert.Equal(
+            TimeSpan.FromDays 21. + TimeSpan.FromSeconds 30.,
+            result.Until.Value - result.Since.Value
+        )
+
+    [<Fact>]
+    let ``a date means midnight UTC`` () =
+        let result = parse "since:2026-09-21"
+        Assert.Equal(Some(DateTimeOffset(2026, 9, 21, 0, 0, 0, TimeSpan.Zero)), result.Since)
 
     [<Fact>]
     let ``since and until accept absolute timestamps`` () =
@@ -172,7 +196,7 @@ module QueryTests =
         )
 
     [<Fact>]
-    let ``the time range is inclusive at both ends`` () =
+    let ``the time range includes since and excludes until`` () =
         Assert.True(
             Query.matches
                 { Query.empty with
@@ -181,7 +205,7 @@ module QueryTests =
                 entry
         )
 
-        Assert.True(
+        Assert.False(
             Query.matches
                 { Query.empty with
                     Until = Some entry.Realtime

@@ -216,6 +216,30 @@ module CorpusTests =
             Assert.Empty later)
 
     [<Fact>]
+    let ``until excludes an entry at the bound`` () =
+        withReader (fun reader ->
+            let newest = reader.Search({ Query.empty with Limit = 1 }) |> List.head
+
+            let atBound =
+                reader.Search
+                    { Query.empty with
+                        Since = Some newest.Realtime
+                        Until = Some newest.Realtime
+                        Limit = 1
+                    }
+
+            let beforeBound =
+                reader.Search
+                    { Query.empty with
+                        Since = Some newest.Realtime
+                        Until = Some(newest.Realtime.AddTicks 1L)
+                        Limit = 1
+                    }
+
+            Assert.Empty atBound
+            Assert.Equal(newest.Cursor, beforeBound.Head.Cursor))
+
+    [<Fact>]
     let ``maximum cursor timestamp does not wrap the search bound`` () =
         withReader (fun reader ->
             let expected = reader.Search { Query.empty with Limit = 10 }

@@ -6,6 +6,12 @@ const older = document.querySelector("#older");
 const liveButton = document.querySelector("#live");
 const notice = document.querySelector("#notice");
 const template = document.querySelector("#row");
+const syntaxToggle = document.querySelector("#syntax-toggle");
+const syntaxHelp = document.querySelector("#syntax-help");
+const suggestions = document.querySelector("#suggestions");
+const searchExample = document.querySelector("#search-example");
+const searchError = document.querySelector("#search-error");
+const effectiveRange = document.querySelector("#effective-range");
 let cursor = null;
 let stream = null;
 let liveAfter = null;
@@ -59,6 +65,123 @@ const facilityNames = [
   "local6",
   "local7",
 ];
+
+const operators = [
+  ["host:", "Exact journal hostname"],
+  ["app:", "Application identifier"],
+  ["unit:", "Systemd unit"],
+  ["source:", "Journal source"],
+  ["boot:", "Boot ID"],
+  ["facility:", "Facility name or number"],
+  ["severity:", "Severity name, number, or comparison"],
+  ["since:", "Inclusive start time"],
+  ["until:", "Exclusive end time"],
+];
+const values = {
+  severity: severityNames.map((name) => [name, "Exact severity"]),
+  facility: facilityNames.map((name) => [name, "Journal facility"]),
+  since: [["now-30m", "Last 30 minutes"], ["now-2h", "Last 2 hours"], ["now-7d", "Last 7 days"]],
+  until: [["now", "Current time"], ["now-30m", "30 minutes ago"]],
+};
+let selectedSuggestion = 0;
+let suggestionItems = [];
+
+function updateExample() {
+  searchExample.hidden = search.value.trim().length > 0;
+}
+
+function closeSuggestions() {
+  suggestions.hidden = true;
+  suggestions.replaceChildren();
+  suggestionItems = [];
+  search.removeAttribute("aria-activedescendant");
+}
+
+function activeToken() {
+  const before = search.value.slice(0, search.selectionStart);
+  const found = before.search(/\S+$/);
+  const start = found < 0 ? before.length : found;
+  return { start, text: before.slice(start) };
+}
+
+function showSuggestions() {
+  const { text } = activeToken();
+  const colon = text.indexOf(":");
+  const fieldName = colon < 0 ? null : text.slice(0, colon);
+  const candidates = fieldName in values ? values[fieldName] :
+    colon < 0 ? operators : [];
+  const prefix = colon < 0 ? text : text.slice(colon + 1);
+  suggestionItems = candidates
+    .filter(([name]) => name.toLowerCase().startsWith(prefix.toLowerCase()))
+    .filter(([name]) => !(fieldName in values && name === prefix))
+    .slice(0, 8)
+    .map(([name, description]) => ({
+      label: name,
+      description,
+      fragment: fieldName in values ? `${fieldName}:${name}` : name,
+    }));
+  suggestions.replaceChildren();
+  suggestionItems.forEach((item, index) => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.id = `suggestion-${index}`;
+    option.setAttribute("role", "option");
+    const label = document.createElement("code");
+    label.textContent = item.label;
+    const detail = document.createElement("span");
+    detail.textContent = item.description;
+    option.append(label, detail);
+    option.onmousedown = (event) => event.preventDefault();
+    option.onclick = () => chooseSuggestion(index);
+    suggestions.append(option);
+  });
+  selectedSuggestion = 0;
+  suggestions.hidden = suggestionItems.length === 0 || !text;
+  updateSelectedSuggestion();
+}
+
+function updateSelectedSuggestion() {
+  for (const [index, option] of [...suggestions.children].entries()) {
+    option.setAttribute("aria-selected", String(index === selectedSuggestion));
+  }
+  if (!suggestions.hidden) {
+    search.setAttribute("aria-activedescendant", `suggestion-${selectedSuggestion}`);
+  }
+}
+
+function chooseSuggestion(index) {
+  const item = suggestionItems[index];
+  if (!item) return;
+  const { start } = activeToken();
+  const end = search.selectionStart +
+    (search.value.slice(search.selectionStart).match(/^\S*/)?.[0].length ?? 0);
+  search.setRangeText(item.fragment, start, end, "end");
+  search.focus();
+  updateExample();
+  showSuggestions();
+}
+
+function showSearchError(message) {
+  searchError.replaceChildren();
+  const explanation = document.createElement("div");
+  explanation.textContent = message;
+  searchError.append(explanation);
+  const selector = /^invalid (\w+):/.exec(message)?.[1];
+  const match = selector && new RegExp(`(?:^|\\s)(${selector}:\\S*)`).exec(search.value);
+  if (match) {
+    const expression = document.createElement("code");
+    expression.textContent = match[1];
+    searchError.append(expression);
+  }
+  searchError.hidden = false;
+  search.setAttribute("aria-invalid", "true");
+}
+
+function clearSearchError() {
+  searchError.hidden = true;
+  searchError.replaceChildren();
+  search.removeAttribute("aria-invalid");
+}
 
 function parameters() {
   const params = new URLSearchParams();
@@ -139,6 +262,9 @@ async function load(append = false) {
       signal: controller.signal,
     });
     if (!response.ok) {
+      if (response.status === 400) {
+        throw new Error(await response.text());
+      }
       throw new Error(`Search failed: HTTP ${response.status}`);
     }
     const page = await response.json();
@@ -148,9 +274,19 @@ async function load(append = false) {
     if (!append) {
       liveAfter = page.liveAfter;
       liveSince = page.liveSince;
+      const relative = /\b(?:since|until):now(?:[+-]\d+(?:\.\d+)?[smhdw])?\b/.test(search.value);
+      effectiveRange.hidden = !relative;
+      if (relative) {
+        const start = page.effectiveSince
+          ? new Date(page.effectiveSince).toLocaleString() : "beginning";
+        effectiveRange.textContent = page.effectiveUntil
+          ? `Effective time: ${start} to ${new Date(page.effectiveUntil).toLocaleString()} (end excluded)`
+          : `Effective time: ${start} onward`;
+      }
     }
     older.hidden = !cursor || page.items.length === 0;
     empty.hidden = list.children.length > 0;
+    clearSearchError();
     return page;
   } catch (error) {
     if (error.name === "AbortError") return null;
@@ -194,6 +330,7 @@ function connect() {
 }
 
 async function refresh() {
+  effectiveRange.hidden = true;
   controller?.abort();
   controller = new AbortController();
   stream?.close();
@@ -205,12 +342,50 @@ async function refresh() {
     const page = await load();
     if (page) connect();
   } catch (error) {
-    notice.textContent = error.message;
+    if (error.message.startsWith("invalid ")) showSearchError(error.message);
+    else notice.textContent = error.message;
   }
 }
 
 form.onsubmit = (event) => {
   event.preventDefault();
+  closeSuggestions();
+  refresh();
+};
+search.oninput = () => {
+  clearSearchError();
+  updateExample();
+  showSuggestions();
+};
+search.onfocus = showSuggestions;
+search.onkeydown = (event) => {
+  if (event.key === "Escape") closeSuggestions();
+  if (suggestions.hidden) return;
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    selectedSuggestion = (selectedSuggestion +
+      (event.key === "ArrowDown" ? 1 : -1) + suggestionItems.length) % suggestionItems.length;
+    updateSelectedSuggestion();
+  } else if (event.key === "Enter") {
+    event.preventDefault();
+    chooseSuggestion(selectedSuggestion);
+  }
+};
+search.onblur = () => setTimeout(closeSuggestions, 100);
+syntaxToggle.onclick = () => {
+  syntaxHelp.hidden = !syntaxHelp.hidden;
+  syntaxToggle.setAttribute("aria-expanded", String(!syntaxHelp.hidden));
+  closeSuggestions();
+};
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".search-area")) {
+    syntaxHelp.hidden = true;
+    syntaxToggle.setAttribute("aria-expanded", "false");
+  }
+});
+searchExample.querySelector("button").onclick = () => {
+  search.value = "severity:err since:now-30m";
+  updateExample();
   refresh();
 };
 older.onclick = () =>
@@ -228,5 +403,6 @@ liveButton.onclick = () => {
 
 const initial = new URLSearchParams(location.search);
 search.value = initial.get("q") || "";
+updateExample();
 showSummary();
 refresh();

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Search reference · Zitat</title>
+    <link rel="stylesheet" href="/zitat.css">
+  </head>
+  <body>
+    <main class="reference">
+      <p><a href="/">← Back to logs</a></p>
+      <h1>Search reference</h1>
+      <p>Words search for a case insensitive substring in the message. Quotes keep
+        spaces together: <code>"connection refused"</code>. Multiple words form
+        one substring in the order entered. Fields match exact values and are
+        case sensitive.</p>
+      <table>
+        <thead><tr><th>Selector</th><th>Value</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td><code>host:</code></td><td>Journal hostname</td><td><code>host:iron</code></td></tr>
+          <tr><td><code>app:</code></td><td>Application identifier</td><td><code>app:sshd</code></td></tr>
+          <tr><td><code>unit:</code></td><td>Systemd unit</td><td><code>unit:ssh.service</code></td></tr>
+          <tr><td><code>source:</code></td><td>Journal source</td><td><code>source:203.0.113.10</code></td></tr>
+          <tr><td><code>boot:</code></td><td>Boot ID</td><td><code>boot:abc123</code></td></tr>
+          <tr><td><code>facility:</code></td><td>Facility name or number 0–23</td><td><code>facility:auth</code></td></tr>
+          <tr><td><code>severity:</code></td><td>Name or number 0–7; optional <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, or <code>&gt;=</code></td><td><code>severity:&lt;=err</code></td></tr>
+          <tr><td><code>since:</code></td><td>Inclusive start</td><td><code>since:now-30m</code></td></tr>
+          <tr><td><code>until:</code></td><td>Exclusive end</td><td><code>until:2026-09-21</code></td></tr>
+        </tbody>
+      </table>
+      <h2>Time values</h2>
+      <p>Use <code>now</code>, <code>now-30m</code>, <code>now+2h</code>, a date
+        such as <code>2026-09-21</code>, or a timestamp with an offset such as
+        <code>2026-09-21T09:00:00-04:00</code>. Durations accept seconds
+        (<code>s</code>), minutes (<code>m</code>), hours (<code>h</code>), days
+        (<code>d</code>), and weeks (<code>w</code>). Dates begin at midnight UTC.
+        Both relative bounds in a query use the same current time.</p>
+      <p><code>since:2026-09-21 until:2026-09-22</code> searches one UTC day.</p>
+    </main>
+  </body>
+</html>

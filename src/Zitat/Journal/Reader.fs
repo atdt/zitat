@@ -35,10 +35,10 @@ module private Clock =
     let toInstant (microseconds: uint64) =
         DateTimeOffset.UnixEpoch.AddTicks(int64 microseconds * 10L)
 
-    // Round inclusive until down and inclusive since up to journal microseconds.
+    // Journal timestamps have microsecond precision.
     let upperBound (instant: DateTimeOffset) =
         let ticks = (instant - DateTimeOffset.UnixEpoch).Ticks
-        if ticks <= 0L then 0UL else uint64 ticks / 10UL
+        if ticks <= 0L then 0UL else uint64 ((ticks - 1L) / 10L)
 
     let lowerBound (instant: DateTimeOffset) =
         let ticks = (instant - DateTimeOffset.UnixEpoch).Ticks
@@ -340,6 +340,9 @@ type JournalReader(set: JournalSet) =
 
             let candidates =
                 openFiles
+                |> List.filter (fun _ ->
+                    query.Until
+                    |> Option.forall (fun instant -> instant > DateTimeOffset.UnixEpoch))
                 |> List.filter (fun file ->
                     query.Source |> Option.forall (fun wanted -> Source.ofPath file.Path = wanted))
                 |> List.filter overlaps
