@@ -73,8 +73,29 @@ module QueryTests =
     [<InlineData("facility:24")>]
     [<InlineData("severity:unknown")>]
     [<InlineData("severity:8")>]
+    [<InlineData("since:bad")>]
+    [<InlineData("since:-1h")>]
+    [<InlineData("since:NaNh")>]
+    [<InlineData("until:bad")>]
     let ``invalid named filters are rejected`` text =
         Assert.True(Query.parseText text |> Result.isError)
+
+    [<Fact>]
+    let ``since accepts a relative duration`` () =
+        let before = DateTimeOffset.UtcNow.AddHours(-1.)
+
+        match Query.parseText "since:1.5h" with
+        | Ok parsed ->
+            Assert.True(parsed.Since.IsSome)
+            Assert.InRange(parsed.Since.Value, before.AddMinutes(-31.), before.AddMinutes(-29.))
+        | Error error -> failwith error
+
+    [<Fact>]
+    let ``since and until accept absolute timestamps`` () =
+        let result = parse "since:2026-09-01T00:00:00Z until:2026-09-20T00:00:00Z"
+
+        Assert.Equal(Some(DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero)), result.Since)
+        Assert.Equal(Some(DateTimeOffset(2026, 9, 20, 0, 0, 0, TimeSpan.Zero)), result.Until)
 
     [<Fact>]
     let ``an empty query matches everything`` () =

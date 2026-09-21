@@ -1,6 +1,7 @@
 namespace Zitat
 
 open System
+open System.Globalization
 open System.Text
 
 module Query =
@@ -120,6 +121,42 @@ module Query =
         else
             severityValue value |> Option.map Exactly
 
+    // A timestamp without an offset means UTC.
+    let timestamp (text: string) =
+        match
+            DateTimeOffset.TryParse(
+                text,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal ||| DateTimeStyles.AdjustToUniversal
+            )
+        with
+        | true, parsed -> Some parsed
+        | _ -> None
+
+    let private relativeTime (value: string) =
+        if value.Length < 2 then
+            None
+        else
+            let number = value[.. value.Length - 2]
+
+            match Double.TryParse(number, NumberStyles.Float, CultureInfo.InvariantCulture) with
+            | true, amount when Double.IsFinite amount && amount > 0. ->
+                try
+                    match value[value.Length - 1] with
+                    | 'm' -> Some(DateTimeOffset.UtcNow.AddMinutes(-amount))
+                    | 'h' -> Some(DateTimeOffset.UtcNow.AddHours(-amount))
+                    | 'd' -> Some(DateTimeOffset.UtcNow.AddDays(-amount))
+                    | _ -> None
+                with
+                | :? ArgumentOutOfRangeException
+                | :? OverflowException -> None
+            | _ -> None
+
+    // Either a duration counting back from now (`1h`, `30m`, `7d`) or an
+    // absolute timestamp.
+    let private time (value: string) =
+        relativeTime value |> Option.orElseWith (fun () -> timestamp value)
+
     let parseText (value: string) =
         let apply (state: Result<LogQuery * string list, string>) (token: string) =
             state
@@ -138,6 +175,14 @@ module Query =
                     match severityFilter value with
                     | Some filter -> Ok({ result with Severity = Some filter }, text)
                     | None -> Error $"invalid severity: {value}"
+                | [| "since"; value |] ->
+                    match time value with
+                    | Some parsed -> Ok({ result with Since = Some parsed }, text)
+                    | None -> Error $"invalid since: {value}"
+                | [| "until"; value |] ->
+                    match time value with
+                    | Some parsed -> Ok({ result with Until = Some parsed }, text)
+                    | None -> Error $"invalid until: {value}"
                 | _ -> Ok(result, token :: text))
 
         tokens value

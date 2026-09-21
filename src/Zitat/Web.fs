@@ -1,7 +1,6 @@
 namespace Zitat
 
 open System
-open System.Globalization
 open System.Text.Json
 open System.Text.Json.Serialization
 open System.Threading
@@ -20,37 +19,6 @@ module Web =
     let private value name (context: HttpContext) =
         let text = context.Request.Query[name].ToString()
         if String.IsNullOrWhiteSpace text then None else Some text
-
-    // A timestamp without an offset means UTC.
-    let private timestamp (text: string) =
-        match
-            DateTimeOffset.TryParse(
-                text,
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal ||| DateTimeStyles.AdjustToUniversal
-            )
-        with
-        | true, parsed -> Some parsed
-        | _ -> None
-
-    let private relativeTime (value: string) =
-        if value.Length < 2 then
-            None
-        else
-            let number = value[.. value.Length - 2]
-
-            match Double.TryParse(number, NumberStyles.Float, CultureInfo.InvariantCulture) with
-            | true, amount when Double.IsFinite amount && amount > 0. ->
-                try
-                    match value[value.Length - 1] with
-                    | 'm' -> Some(DateTimeOffset.UtcNow.AddMinutes(-amount))
-                    | 'h' -> Some(DateTimeOffset.UtcNow.AddHours(-amount))
-                    | 'd' -> Some(DateTimeOffset.UtcNow.AddDays(-amount))
-                    | _ -> None
-                with
-                | :? ArgumentOutOfRangeException
-                | :? OverflowException -> None
-            | _ -> None
 
     // Parses one query parameter, returning the parsed value (if any)
     // alongside the error it produced (if any).
@@ -76,10 +44,6 @@ module Web =
                 | Ok parsed -> parsed, []
                 | Error error -> Query.empty, [ error ]
 
-        let range, rangeErrors = validated "range" relativeTime context
-        let since, sinceErrors = validated "since" timestamp context
-        let until, untilErrors = validated "until" timestamp context
-
         let facility, facilityErrors = validated "facility" Query.facilityValue context
 
         let severity, severityErrors = validated "severity" Query.severityFilter context
@@ -93,17 +57,7 @@ module Web =
                 context
 
         let errors =
-            List.concat
-                [
-                    textErrors
-                    rangeErrors
-                    sinceErrors
-                    untilErrors
-                    facilityErrors
-                    severityErrors
-                    beforeErrors
-                    limitErrors
-                ]
+            List.concat [ textErrors; facilityErrors; severityErrors; beforeErrors; limitErrors ]
 
         finish
             errors
@@ -115,8 +69,6 @@ module Web =
                 BootId = value "boot" context |> Option.orElse textQuery.BootId
                 Facility = facility |> Option.orElse textQuery.Facility
                 Severity = severity |> Option.orElse textQuery.Severity
-                Since = range |> Option.orElse since
-                Until = until
                 Before = before
                 Limit = limit |> Option.defaultValue 200
             }
@@ -167,7 +119,7 @@ module Web =
 
     let private resume (context: HttpContext) =
         let after, afterErrors = validated "after" Cursor.validate context
-        let fromTime, fromErrors = validated "from" timestamp context
+        let fromTime, fromErrors = validated "from" Query.timestamp context
         let header = context.Request.Headers["Last-Event-ID"].ToString()
 
         let lastEventId, lastEventErrors =
