@@ -1,8 +1,6 @@
 namespace Zitat
 
 open System
-open System.Text.Json
-open System.Text.Json.Serialization
 open System.Threading
 open System.Threading.Tasks
 open Falco
@@ -11,11 +9,6 @@ open Microsoft.AspNetCore.Http
 open Zitat.Journal
 
 module Web =
-    let jsonOptions =
-        let options = JsonSerializerOptions(JsonSerializerDefaults.Web)
-        options.Converters.Add(JsonFSharpConverter())
-        options
-
     let private value name (context: HttpContext) =
         let text = context.Request.Query[name].ToString()
         if String.IsNullOrWhiteSpace text then None else Some text
@@ -98,26 +91,7 @@ module Web =
                 else
                     None
 
-            Response.ofJsonOptions
-                jsonOptions
-                {|
-                    items = items
-                    nextBefore = next
-                    liveAfter = liveAfter
-                    liveSince = liveSince
-                    effectiveSince = parsed.Since
-                    effectiveUntil = parsed.Until
-                |}
-                context
-
-    let private status (reader: JournalReader) context =
-        Response.ofJsonOptions
-            jsonOptions
-            {|
-                status = "ok"
-                journal = reader.Status()
-            |}
-            context
+            WebJson.logPage items next liveAfter liveSince parsed.Since parsed.Until context
 
     let private resume (context: HttpContext) =
         let after, afterErrors = validated "after" Cursor.validate context
@@ -166,7 +140,7 @@ module Web =
                     checkpoint <- Some entry.Cursor
 
                     if Query.matches filter entry then
-                        let json = JsonSerializer.Serialize(entry, jsonOptions)
+                        let json = WebJson.entry entry
 
                         do!
                             context.Response.WriteAsync(
@@ -238,5 +212,5 @@ module Web =
         [
             get "/api/logs" (logs reader)
             get "/api/tail" (stream stopping reader live)
-            get "/api/status" (status reader)
+            get "/api/status" (WebJson.status reader)
         ]

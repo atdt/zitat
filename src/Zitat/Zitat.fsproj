@@ -3,6 +3,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>zitat</AssemblyName>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Journal/Format.fs" />
@@ -17,13 +19,16 @@
     <Compile Include="Query.fs" />
     <Compile Include="Live.fs" />
     <Compile Include="Follower.fs" />
+    <Compile Include="WebJson.fs" />
     <Compile Include="Web.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../Zitat.Json/Zitat.Json.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Falco" Version="5.2.0" />
     <PackageReference Include="ZstdSharp.Port" Version="0.8.6" />
-    <PackageReference Include="FSharp.SystemTextJson" Version="1.4.36" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.12" />
   </ItemGroup>
 </Project>
