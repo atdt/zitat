@@ -19,7 +19,7 @@ trap 'ssh "$host" rm -rf "$remote_tmp"' EXIT
 tarball=$("$repository/scripts/publish-linux-x64.sh")
 
 echo "Copying build and unit files to $host..."
-scp -q "$tarball" "$repository/deploy/zitat.service" "$repository/deploy/zitat.env.example" \
+scp "$tarball" "$repository/deploy/zitat.service" "$repository/deploy/zitat.env.example" \
   "$host:$remote_tmp/"
 
 ssh "$host" sh -s -- "$remote_tmp" <<'REMOTE'
