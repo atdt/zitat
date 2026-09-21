@@ -24,7 +24,7 @@ header {
   align-self: center;
   margin-right: 0.33rem;
   color: #65d6ad;
-  font: 700 1.25rem system-ui, sans-serif;
+  font: 700 1.25rem/1.25 system-ui, sans-serif;
 }
 form {
   display: flex;
