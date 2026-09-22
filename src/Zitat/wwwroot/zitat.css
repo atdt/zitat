@@ -44,7 +44,8 @@ button:hover {
 /* The transport glyphs default to emoji presentation. Both the property and
    the U+FE0E after each glyph ask for the text form; neither is honored
    everywhere, and they are independent requests. */
-#live {
+#live,
+.copy {
   font-variant-emoji: text;
 }
 button[type="submit"] {
@@ -278,6 +279,7 @@ time {
   grid-template-columns: max-content minmax(0, 1fr);
   gap: 0.1rem 0.6rem;
   margin: 0.25rem 0 0.5rem 4ch;
+  padding-right: 5ch;
 }
 .details dt {
   color: var(--fg-faint);
@@ -285,6 +287,17 @@ time {
 .details dd {
   margin: 0;
   overflow-wrap: anywhere;
+}
+/* Anchored to the row, not laid out in it, so the panel's last field does not
+   share a line with the button. */
+.copy {
+  position: absolute;
+  right: 0.6rem;
+  bottom: 0.6rem;
+  padding: 0.2rem 0.55rem;
+  color: var(--fg-dim);
+  font-size: 1.1rem;
+  line-height: 1.1;
 }
 .facility {
   color: var(--violet);

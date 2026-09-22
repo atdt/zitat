@@ -22,6 +22,7 @@ let controller = null;
 let pending = 0;
 let retryTimer = null;
 let retryDelay = 1000;
+let copyTimer = null;
 
 function showNotice(message) {
   noticeText.textContent = message;
@@ -245,7 +246,7 @@ function quote(value) {
 }
 
 // Rows outnumber the ones anyone opens, so the field list is built on demand.
-const rowFields = new WeakMap();
+const rowEntries = new WeakMap();
 
 // Reader.fs derives the row's own columns from these, so the panel omits them.
 const shownFields = new Set([
@@ -261,7 +262,7 @@ const shownFields = new Set([
 function toggleDetails(row) {
   const details = row.querySelector(".details");
   if (!details.children.length) {
-    for (const [name, value] of rowFields.get(row)) {
+    for (const [name, value] of rowEntries.get(row).fields) {
       if (shownFields.has(name)) continue;
       const term = document.createElement("dt");
       term.textContent = name;
@@ -271,9 +272,31 @@ function toggleDetails(row) {
     }
   }
   details.hidden = !details.hidden;
+  row.querySelector(".copy").hidden = details.hidden;
   const toggle = row.querySelector(".toggle");
   toggle.setAttribute("aria-expanded", String(!details.hidden));
   toggle.textContent = details.hidden ? "▸" : "▾";
+}
+
+// The panel omits the fields the row already shows; the copy carries every
+// field, and the timestamp, which is not one.
+function entryText({ realtime, fields }) {
+  const lines = [`TIMESTAMP=${formatTime(new Date(realtime))}`];
+  for (const [name, value] of fields) lines.push(`${name}=${value}`);
+  return lines.join("\n");
+}
+
+async function copyEntry(row) {
+  const button = row.querySelector(".copy");
+  try {
+    await navigator.clipboard.writeText(entryText(rowEntries.get(row)));
+  } catch (error) {
+    showNotice(`Cannot copy: ${error.message}`);
+    return;
+  }
+  button.textContent = "✓";
+  clearTimeout(copyTimer);
+  copyTimer = setTimeout(() => (button.textContent = "⎘\ufe0e"), 1200);
 }
 
 function field(row, selector, text, filter, value) {
@@ -326,7 +349,7 @@ function render(
   field(row, ".severity", severityName, "severity", severityName);
 
   row.querySelector(".message").textContent = message;
-  rowFields.set(row, fields);
+  rowEntries.set(row, { realtime, fields });
   prepend ? list.prepend(row) : list.append(row);
 }
 
@@ -472,9 +495,14 @@ document.addEventListener("click", (event) => {
   }
 });
 list.onclick = (event) => {
-  if (event.target.closest(".field") || getSelection().toString()) return;
   const row = event.target.closest("li");
-  if (row) toggleDetails(row);
+  if (!row) return;
+  if (event.target.closest(".copy")) {
+    copyEntry(row);
+    return;
+  }
+  if (event.target.closest(".field") || getSelection().toString()) return;
+  toggleDetails(row);
 };
 older.onclick = () => {
   older.disabled = true;
