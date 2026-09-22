@@ -173,7 +173,7 @@ type JournalFile private (mapping: Mapping) =
                 raise (
                     UnsupportedJournalException(
                         path,
-                        $"incompatible flags %A{unknown} are not implemented (file declares %A{incompatible})"
+                        $"incompatible flags %O{unknown} are not implemented (file declares %O{incompatible})"
                     )
                 )
 
@@ -268,12 +268,13 @@ type JournalFile private (mapping: Mapping) =
         match this.Compression offset with
         | Uncompressed -> mapping.ToArray(offset + dataPayloadOffset, length)
         | Zstd -> Zstd.decompress (mapping.Span(offset + dataPayloadOffset, length))
-        | other ->
+        | Xz ->
             raise (
-                UnsupportedJournalException(
-                    path,
-                    $"data object at %d{offset} uses %A{other} compression"
-                )
+                UnsupportedJournalException(path, $"data object at %d{offset} uses XZ compression")
+            )
+        | Lz4 ->
+            raise (
+                UnsupportedJournalException(path, $"data object at %d{offset} uses LZ4 compression")
             )
 
     member _.EntryRealtime(offset: int64) =
