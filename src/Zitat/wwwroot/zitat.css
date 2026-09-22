@@ -272,6 +272,7 @@ time {
 }
 #logs > li:has(.details:not([hidden])) {
   background: var(--surface);
+  padding-right: 5ch;
 }
 .details:not([hidden]) {
   grid-column: 1 / -1;
@@ -279,7 +280,6 @@ time {
   grid-template-columns: max-content minmax(0, 1fr);
   gap: 0.1rem 0.6rem;
   margin: 0.25rem 0 0.5rem 4ch;
-  padding-right: 5ch;
 }
 .details dt {
   color: var(--fg-faint);
@@ -288,12 +288,12 @@ time {
   margin: 0;
   overflow-wrap: anywhere;
 }
-/* Anchored to the row, not laid out in it, so the panel's last field does not
-   share a line with the button. */
+/* Anchored to the row, not laid out in it; the expanded row reserves the
+   width the button sits in. */
 .copy {
   position: absolute;
   right: 0.6rem;
-  bottom: 0.6rem;
+  top: 0.25rem;
   padding: 0.2rem 0.55rem;
   color: var(--fg-dim);
   font-size: 1.1rem;
