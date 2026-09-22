@@ -5,6 +5,9 @@ const empty = document.querySelector("#empty");
 const older = document.querySelector("#older");
 const liveButton = document.querySelector("#live");
 const notice = document.querySelector("#notice");
+const noticeText = document.querySelector("#notice-text");
+const noticeDismiss = document.querySelector("#notice-dismiss");
+const progress = document.querySelector("#progress");
 const template = document.querySelector("#row");
 const syntaxToggle = document.querySelector("#syntax-toggle");
 const syntaxHelp = document.querySelector("#syntax-help");
@@ -16,6 +19,46 @@ let stream = null;
 let liveAfter = null;
 let liveSince = null;
 let controller = null;
+let pending = 0;
+let retryTimer = null;
+let retryDelay = 1000;
+
+function showNotice(message) {
+  noticeText.textContent = message;
+  notice.hidden = false;
+}
+
+function clearNotice() {
+  notice.hidden = true;
+  noticeText.textContent = "";
+}
+
+function beginRequest() {
+  pending += 1;
+  progress.hidden = false;
+}
+
+function endRequest() {
+  pending -= 1;
+  progress.hidden = pending === 0;
+}
+
+function markStale(stale) {
+  list.setAttribute("aria-busy", String(stale));
+  older.disabled = stale;
+}
+
+// fetch rejects with TypeError on network failure, and does not report the
+// cause in error.message.
+function describe(error) {
+  return error instanceof TypeError ? "Cannot reach the server" : error.message;
+}
+
+function retryLater(action) {
+  clearTimeout(retryTimer);
+  retryTimer = setTimeout(action, retryDelay);
+  retryDelay = Math.min(retryDelay * 2, 30000);
+}
 
 function formatTime(date) {
   const pad = (n, len = 2) => String(n).padStart(len, "0");
@@ -288,6 +331,7 @@ function render(
 }
 
 async function load(append = false) {
+  beginRequest();
   try {
     const params = parameters();
     if (append && cursor) params.set("before", cursor);
@@ -320,26 +364,39 @@ async function load(append = false) {
     older.hidden = !cursor || page.items.length === 0;
     empty.hidden = list.children.length > 0;
     clearSearchError();
+    retryDelay = 1000;
     return page;
   } catch (error) {
     if (error.name === "AbortError") return null;
     throw error;
+  } finally {
+    endRequest();
   }
 }
 
 function connect() {
   stream?.close();
+  clearTimeout(retryTimer);
   const params = parameters();
   if (liveAfter) params.set("after", liveAfter);
   else if (liveSince) params.set("from", liveSince);
-  stream = new EventSource(`/api/tail?${params}`);
+  const opened = new EventSource(`/api/tail?${params}`);
+  stream = opened;
+  stream.onopen = () => {
+    retryDelay = 1000;
+    clearNotice();
+  };
   stream.onmessage = (event) => {
     liveAfter = event.lastEventId;
     render(JSON.parse(event.data), true);
     empty.hidden = true;
   };
+  // EventSource reconnects automatically when an open connection is lost,
+  // but transitions to CLOSED and stops reconnecting if the handshake fails.
   stream.onerror = () => {
-    notice.textContent = "Live connection interrupted; reconnecting.";
+    if (stream !== opened) return;
+    showNotice("Live connection interrupted; reconnecting.");
+    if (opened.readyState === EventSource.CLOSED) retryLater(connect);
   };
   liveButton.textContent = "⏸";
   liveButton.setAttribute("aria-label", "Pause live updates");
@@ -348,8 +405,11 @@ function connect() {
 
 async function refresh() {
   effectiveRange.hidden = true;
+  clearTimeout(retryTimer);
+  markStale(true);
   controller?.abort();
-  controller = new AbortController();
+  const own = new AbortController();
+  controller = own;
   stream?.close();
   stream = null;
   liveButton.disabled = true;
@@ -357,10 +417,22 @@ async function refresh() {
   history.replaceState(null, "", params.size ? `?${params}` : "/");
   try {
     const page = await load();
-    if (page) connect();
+    if (page) {
+      clearNotice();
+      connect();
+    }
+    if (!own.signal.aborted) markStale(false);
   } catch (error) {
-    if (error.message.startsWith("invalid ")) showSearchError(error.message);
-    else notice.textContent = error.message;
+    if (own.signal.aborted) return;
+    if (error.message.startsWith("invalid ")) {
+      showSearchError(error.message);
+      markStale(false);
+    } else {
+      // The list remains marked stale until a retry succeeds because its
+      // contents reflect the previous query.
+      showNotice(`${describe(error)}; retrying.`);
+      retryLater(refresh);
+    }
   }
 }
 
@@ -404,14 +476,19 @@ list.onclick = (event) => {
   const row = event.target.closest("li");
   if (row) toggleDetails(row);
 };
-older.onclick = () =>
-  load(true).catch((error) => {
-    notice.textContent = error.message;
-  });
+older.onclick = () => {
+  older.disabled = true;
+  load(true)
+    .catch((error) => showNotice(describe(error)))
+    .finally(() => (older.disabled = false));
+};
+noticeDismiss.onclick = clearNotice;
 liveButton.onclick = () => {
   if (stream) {
     stream.close();
     stream = null;
+    clearTimeout(retryTimer);
+    clearNotice();
     liveButton.textContent = "▶";
     liveButton.setAttribute("aria-label", "Resume live updates");
   } else connect();

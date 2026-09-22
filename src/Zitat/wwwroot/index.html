@@ -38,13 +38,17 @@
       </form>
       <div id="search-error" role="alert" hidden></div>
       <div id="effective-range" hidden></div>
-      <div id="notice" role="status"></div>
+      <div id="progress" hidden></div>
     </header>
     <main>
       <div id="empty" hidden>No matching logs.</div>
       <ol id="logs" aria-live="polite"></ol>
       <button id="older" type="button" hidden>Load older</button>
     </main>
+    <div id="notice" role="status" hidden>
+      <span id="notice-text"></span>
+      <button id="notice-dismiss" type="button" aria-label="Dismiss">✕</button>
+    </div>
     <template id="row">
       <li>
         <button class="toggle" type="button" aria-expanded="false"
