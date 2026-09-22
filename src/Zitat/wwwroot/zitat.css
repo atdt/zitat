@@ -41,6 +41,12 @@ button {
 button:hover {
   border-color: var(--lime);
 }
+/* The transport glyphs default to emoji presentation. Both the property and
+   the U+FE0E after each glyph ask for the text form; neither is honored
+   everywhere, and they are independent requests. */
+#live {
+  font-variant-emoji: text;
+}
 button[type="submit"] {
   font-size: 1.25rem;
   line-height: 1;
@@ -163,23 +169,26 @@ form {
   right: 0;
   bottom: -1px;
   height: 2px;
-  overflow: hidden;
+  container-type: inline-size;
+  overflow: clip;
   background: var(--border);
 }
+/* Measuring the travel in the track's own width, rather than the bar's, makes
+   both edges of the sweep exact: the bar enters as it leaves. */
 #progress::after {
   content: "";
   display: block;
-  width: 30%;
+  width: 30cqw;
   height: 100%;
   background: var(--lime);
   animation: sweep 1.1s ease-in-out infinite;
 }
 @keyframes sweep {
   from {
-    transform: translateX(-100%);
+    translate: -30cqw;
   }
   to {
-    transform: translateX(433%);
+    translate: 100cqw;
   }
 }
 #logs[aria-busy="true"] {
@@ -212,7 +221,7 @@ form {
 }
 @media (prefers-reduced-motion: reduce) {
   #progress::after {
-    width: 100%;
+    width: 100cqw;
     animation: none;
   }
 }

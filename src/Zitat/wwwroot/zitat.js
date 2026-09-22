@@ -398,7 +398,7 @@ function connect() {
     showNotice("Live connection interrupted; reconnecting.");
     if (opened.readyState === EventSource.CLOSED) retryLater(connect);
   };
-  liveButton.textContent = "⏸";
+  liveButton.textContent = "\u23f8\ufe0e";
   liveButton.setAttribute("aria-label", "Pause live updates");
   liveButton.disabled = false;
 }
@@ -489,7 +489,7 @@ liveButton.onclick = () => {
     stream = null;
     clearTimeout(retryTimer);
     clearNotice();
-    liveButton.textContent = "▶";
+    liveButton.textContent = "\u25b6\ufe0e";
     liveButton.setAttribute("aria-label", "Resume live updates");
   } else connect();
 };
