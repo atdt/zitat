@@ -90,6 +90,14 @@ module Source =
 
         if stem.StartsWith "remote-" then stem.Substring 7 else stem
 
+/// Identifies the newest entry in a journal file.
+type internal TailSnapshot =
+    {
+        Path: string
+        EntryCount: int64
+        Realtime: uint64
+    }
+
 /// Refresh and Use share a lock because unmapping a file during a read can
 /// crash the process.
 [<Sealed>]
@@ -139,6 +147,20 @@ type JournalSet(root: string, log: string -> unit) =
 
     member _.Use(action: JournalFile list -> 'a) =
         lock gate (fun () -> action (files.Values |> Seq.sortBy _.Path |> List.ofSeq))
+
+    /// Identifies the newest entry in each open file. Entries appended within
+    /// a mapping are visible without a Refresh, so a change here is enough to
+    /// wake live subscribers.
+    member internal this.Tails() : TailSnapshot list =
+        this.Use(fun openFiles ->
+            [
+                for file in openFiles ->
+                    {
+                        Path = file.Path
+                        EntryCount = file.EntryCount
+                        Realtime = file.TailRealtime
+                    }
+            ])
 
     interface IDisposable with
         member _.Dispose() =
