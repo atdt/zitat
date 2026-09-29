@@ -17,12 +17,14 @@ Environment=Zitat__JournalDirectory=/var/log/journal
 EnvironmentFile=-/etc/zitat.env
 # For HTTPS, copy the certificate and key into the service's credentials
 # directory, which the dynamic user can read. See zitat.env.example.
-#LoadCredential=tls.crt:/etc/letsencrypt/live/zitat.example.com/fullchain.pem
-#LoadCredential=tls.key:/etc/letsencrypt/live/zitat.example.com/privkey.pem
+LoadCredential=tls.crt:/var/lib/tailscale/certs/calx.anchovy-escalator.ts.net.crt
+LoadCredential=tls.key:/var/lib/tailscale/certs/calx.anchovy-escalator.ts.net.key
 # .NET opens its per-user X.509 stores under HOME when it builds the
 # certificate chain. The dynamic user has no home directory.
-#RuntimeDirectory=zitat
-#Environment=HOME=%t/zitat
+RuntimeDirectory=zitat
+Environment=HOME=%t/zitat
+# Lets the dynamic user bind ports below 1024, such as 443.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 # A failed hosted service can stop the host with a clean exit. Restart it
 # even when systemd does not classify the exit as a failure.
 Restart=always
