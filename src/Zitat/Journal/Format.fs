@@ -130,7 +130,9 @@ type FileState =
     | Archived
     | UnknownState of byte
 
-/// Report unsupported formats.
 exception UnsupportedJournalException of path: string * reason: string
 
 exception CorruptJournalException of path: string * reason: string
+
+/// A reader can see a new journal file before journald writes its header.
+exception IncompleteJournalException of path: string * reason: string

@@ -29,7 +29,7 @@ type Mapping
 
         if length < Format.HeaderMinimumSize then
             raise (
-                CorruptJournalException(
+                IncompleteJournalException(
                     path,
                     $"file is %d{length} bytes, shorter than a journal header"
                 )

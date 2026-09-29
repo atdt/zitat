@@ -4,6 +4,7 @@ open System
 open System.Collections.Generic
 open System.IO
 open System.Text
+open Microsoft.Extensions.Logging
 open Zitat
 
 module Fields =
@@ -101,7 +102,7 @@ type internal TailSnapshot =
 /// Refresh and Use share a lock because unmapping a file during a read can
 /// crash the process.
 [<Sealed>]
-type JournalSet(root: string, log: string -> unit) =
+type JournalSet(root: string, logger: ILogger) =
     let files = Dictionary<string, JournalFile>()
     let gate = obj ()
 
@@ -129,21 +130,24 @@ type JournalSet(root: string, log: string -> unit) =
                     close path
 
             for path in onDisk do
-                let stale =
-                    match files.TryGetValue path with
-                    | true, file -> file.MappedLength <> FileInfo(path).Length
-                    | _ -> true
+                try
+                    let stale =
+                        match files.TryGetValue path with
+                        | true, file -> file.MappedLength <> FileInfo(path).Length
+                        | _ -> true
 
-                if stale then
-                    close path
-
-                    try
+                    if stale then
+                        close path
                         files[path] <- JournalFile.Open path
-                    with
-                    // Unsupported formats must be reported to the caller.
-                    | UnsupportedJournalException _ -> reraise ()
-                    // Ignore corrupt files.
-                    | CorruptJournalException(path, reason) -> log $"skipping %s{path}: %s{reason}")
+                with
+                // Still being created. Retry later.
+                | IncompleteJournalException(path, reason) ->
+                    logger.LogDebug $"skipping %s{path}: %s{reason}"
+                | CorruptJournalException(path, reason) ->
+                    logger.LogWarning $"skipping %s{path}: %s{reason}"
+                | :? FileNotFoundException ->
+                    close path
+                    logger.LogDebug $"skipping %s{path}: file vanished")
 
     member _.Use(action: JournalFile list -> 'a) =
         lock gate (fun () -> action (files.Values |> Seq.sortBy _.Path |> List.ofSeq))

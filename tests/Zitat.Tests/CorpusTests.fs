@@ -2,6 +2,7 @@ namespace Zitat.Tests
 
 open System
 open System.IO
+open Microsoft.Extensions.Logging.Abstractions
 open Xunit
 open Zitat
 open Zitat.Journal
@@ -14,13 +15,13 @@ module Corpus =
 
 module CorpusTests =
     let private withReader (test: JournalReader -> unit) =
-        use set = new JournalSet(Corpus.path, ignore)
+        use set = new JournalSet(Corpus.path, NullLogger.Instance)
         set.Refresh()
         test (JournalReader set)
 
     [<Fact>]
     let ``every field resolves to the object the entry references`` () =
-        use set = new JournalSet(Corpus.path, ignore)
+        use set = new JournalSet(Corpus.path, NullLogger.Instance)
         set.Refresh()
 
         let checkedFields =

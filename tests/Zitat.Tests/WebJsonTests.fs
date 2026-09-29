@@ -5,6 +5,7 @@ open System.IO
 open System.Text.Json
 open System.Threading.Tasks
 open Microsoft.AspNetCore.Http
+open Microsoft.Extensions.Logging.Abstractions
 open Microsoft.FSharp.Reflection
 open Xunit
 open Zitat
@@ -80,7 +81,7 @@ module WebJsonTests =
 
     [<Fact>]
     let ``every journal status field is serialized`` () =
-        use set = new JournalSet(Corpus.path, ignore)
+        use set = new JournalSet(Corpus.path, NullLogger.Instance)
         set.Refresh()
         let reader = JournalReader set
         let element = written (WebJson.writeStatus reader)
