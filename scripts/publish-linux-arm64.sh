@@ -9,7 +9,7 @@ dotnet publish "$repository/src/Zitat/Zitat.fsproj" \
   --runtime linux-arm64 \
   --self-contained true \
   -p:PublishSingleFile=true \
-  --output "$output"
+  --output "$output" >&2
 
 tar -C "$output" -czf "$repository/artifacts/zitat-linux-arm64.tar.gz" .
 printf '%s\n' "$repository/artifacts/zitat-linux-arm64.tar.gz"

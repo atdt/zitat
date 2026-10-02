@@ -16,7 +16,7 @@ host=calx
 remote_tmp=$(ssh "$host" mktemp -d)
 trap 'ssh "$host" rm -rf "$remote_tmp"' EXIT
 
-tarball=$("$repository/scripts/publish-linux-x64.sh")
+tarball=$("$repository/scripts/publish-linux-arm64.sh")
 
 echo "Copying build and unit files to $host..."
 scp "$tarball" "$repository/deploy/zitat.service" "$repository/deploy/zitat.env.example" \
