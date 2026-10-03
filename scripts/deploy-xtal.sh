@@ -1,18 +1,18 @@
 #!/bin/sh
-# Builds Zitat and deploys it to calx, listening on the tailnet interface.
+# Builds Zitat and deploys it to xtal, serving HTTPS on the tailnet interface.
 #
-# calx is the maintainer's own test host, not a generic deploy target;
+# xtal is the maintainer's own test host, not a generic deploy target;
 # this script is specific to it and is not meant to be reused as-is
 # for another host.
 #
-# calx is not config-managed for this app; this script owns the app
+# xtal is not config-managed for this app; this script owns the app
 # directory (/opt/zitat) plus two host-level files it installs the first
 # time it runs: /etc/systemd/system/zitat.service and /etc/zitat.env. Any
 # time it changes either of those, it prints what changed.
 set -eu
 
 repository=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-host=calx
+host=xtal
 remote_tmp=$(ssh "$host" mktemp -d)
 trap 'ssh "$host" rm -rf "$remote_tmp"' EXIT
 
@@ -40,9 +40,13 @@ fi
 if [ ! -e /etc/zitat.env ]; then
   echo "==> Creating /etc/zitat.env (outside /opt/zitat)"
   tailnet_ip=$(tailscale ip -4)
-  sudo sh -c "sed 's#http://127.0.0.1:8080#http://$tailnet_ip:8080#' '$env_example' > /etc/zitat.env"
+  sudo sh -c "sed \
+    -e 's#^ASPNETCORE_URLS=http://127.0.0.1:8080\$#ASPNETCORE_URLS=https://$tailnet_ip:443#' \
+    -e '/^#ASPNETCORE_URLS=/d' \
+    -e 's/^#Kestrel__/Kestrel__/' \
+    '$env_example' > /etc/zitat.env"
   sudo chmod 0644 /etc/zitat.env
-  echo "    Bound to tailnet address $tailnet_ip:8080. If this host's"
+  echo "    Serving HTTPS on tailnet address $tailnet_ip:443. If this host's"
   echo "    tailnet IP ever changes, update /etc/zitat.env by hand."
 fi
 

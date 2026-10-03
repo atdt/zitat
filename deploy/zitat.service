@@ -17,8 +17,8 @@ Environment=Zitat__JournalDirectory=/var/log/journal
 EnvironmentFile=-/etc/zitat.env
 # For HTTPS, copy the certificate and key into the service's credentials
 # directory, which the dynamic user can read. See zitat.env.example.
-LoadCredential=tls.crt:/var/lib/tailscale/certs/calx.anchovy-escalator.ts.net.crt
-LoadCredential=tls.key:/var/lib/tailscale/certs/calx.anchovy-escalator.ts.net.key
+LoadCredential=tls.crt:/var/lib/tailscale/certs/xtal.anchovy-escalator.ts.net.crt
+LoadCredential=tls.key:/var/lib/tailscale/certs/xtal.anchovy-escalator.ts.net.key
 # .NET opens its per-user X.509 stores under HOME when it builds the
 # certificate chain. The dynamic user has no home directory.
 RuntimeDirectory=zitat
