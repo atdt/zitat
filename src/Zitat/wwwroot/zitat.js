@@ -358,7 +358,7 @@ async function load(append = false) {
   try {
     const params = parameters();
     if (append && cursor) params.set("before", cursor);
-    const response = await fetch(`/api/logs?${params}`, {
+    const response = await fetch(`api/logs?${params}`, {
       signal: controller.signal,
     });
     if (!response.ok) {
@@ -403,7 +403,7 @@ function connect() {
   const params = parameters();
   if (liveAfter) params.set("after", liveAfter);
   else if (liveSince) params.set("from", liveSince);
-  const opened = new EventSource(`/api/tail?${params}`);
+  const opened = new EventSource(`api/tail?${params}`);
   stream = opened;
   stream.onopen = () => {
     retryDelay = 1000;
@@ -437,7 +437,7 @@ async function refresh() {
   stream = null;
   liveButton.disabled = true;
   const params = parameters();
-  history.replaceState(null, "", params.size ? `?${params}` : "/");
+  history.replaceState(null, "", params.size ? `?${params}` : location.pathname);
   try {
     const page = await load();
     if (page) {
