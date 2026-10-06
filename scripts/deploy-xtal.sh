@@ -1,14 +1,15 @@
 #!/bin/sh
-# Builds Zitat and deploys it to xtal, serving HTTPS on the tailnet interface.
+# Builds Zitat and deploys it to xtal, where Caddy serves it on the tailnet
+# under /zitat/.
 #
 # xtal is the maintainer's own test host, not a generic deploy target;
 # this script is specific to it and is not meant to be reused as-is
 # for another host.
 #
 # xtal is not config-managed for this app; this script owns the app
-# directory (/opt/zitat) plus two host-level files it installs the first
-# time it runs: /etc/systemd/system/zitat.service and /etc/zitat.env. Any
-# time it changes either of those, it prints what changed.
+# directory (/opt/zitat) plus /etc/systemd/system/zitat.service and
+# /etc/caddy/tailnet.d/zitat, and prints a line whenever it changes either
+# of those.
 set -eu
 
 repository=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -19,7 +20,7 @@ trap 'ssh "$host" rm -rf "$remote_tmp"' EXIT
 tarball=$("$repository/scripts/publish-linux-arm64.sh")
 
 echo "Copying build and unit files to $host..."
-scp "$tarball" "$repository/deploy/zitat.service" "$repository/deploy/zitat.env.example" \
+scp "$tarball" "$repository/deploy/zitat.service" "$repository/deploy/zitat.caddy" \
   "$host:$remote_tmp/"
 
 ssh "$host" sh -s -- "$remote_tmp" <<'REMOTE'
@@ -27,7 +28,7 @@ set -eu
 remote_tmp=$1
 tarball="$remote_tmp/$(basename "$(ls "$remote_tmp"/zitat-linux-*.tar.gz)")"
 unit="$remote_tmp/zitat.service"
-env_example="$remote_tmp/zitat.env.example"
+route="$remote_tmp/zitat.caddy"
 
 need_daemon_reload=0
 
@@ -35,19 +36,6 @@ if ! cmp -s "$unit" /etc/systemd/system/zitat.service 2>/dev/null; then
   echo "==> Installing /etc/systemd/system/zitat.service (outside /opt/zitat)"
   sudo install -m 0644 "$unit" /etc/systemd/system/zitat.service
   need_daemon_reload=1
-fi
-
-if [ ! -e /etc/zitat.env ]; then
-  echo "==> Creating /etc/zitat.env (outside /opt/zitat)"
-  tailnet_ip=$(tailscale ip -4)
-  sudo sh -c "sed \
-    -e 's#^ASPNETCORE_URLS=http://127.0.0.1:8080\$#ASPNETCORE_URLS=https://$tailnet_ip:443#' \
-    -e '/^#ASPNETCORE_URLS=/d' \
-    -e 's/^#Kestrel__/Kestrel__/' \
-    '$env_example' > /etc/zitat.env"
-  sudo chmod 0644 /etc/zitat.env
-  echo "    Serving HTTPS on tailnet address $tailnet_ip:443. If this host's"
-  echo "    tailnet IP ever changes, update /etc/zitat.env by hand."
 fi
 
 sudo mkdir -p /opt/zitat
@@ -61,5 +49,12 @@ if [ "$need_daemon_reload" -eq 1 ]; then
 fi
 
 sudo systemctl enable --now zitat.service
+
+if ! cmp -s "$route" /etc/caddy/tailnet.d/zitat 2>/dev/null; then
+  echo "==> Installing /etc/caddy/tailnet.d/zitat (outside /opt/zitat)"
+  sudo install -D -m 0644 "$route" /etc/caddy/tailnet.d/zitat
+  sudo systemctl reload caddy
+fi
+
 sudo systemctl --no-pager --full status zitat.service
 REMOTE
