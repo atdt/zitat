@@ -1,0 +1,2 @@
+# The self-contained .NET runtime includes zlib in the single-file executable.
+zitat: embedded-library zlib [usr/lib/zitat/zitat]

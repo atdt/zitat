@@ -3,7 +3,7 @@
 # or amd64) and prints its path.
 set -eu
 
-repository=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+repository=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
 case "${1-}" in
   arm64) rid=linux-arm64 ;;
@@ -27,6 +27,18 @@ staged="$repository/artifacts/deb-root/usr/lib/zitat"
 rm -rf "$repository/artifacts/deb-root"
 mkdir -p "$(dirname "$staged")"
 cp -R "$repository/artifacts/$rid" "$staged"
+
+docs="$repository/artifacts/deb-root/usr/share/doc/zitat"
+mkdir -p "$docs"
+cp "$repository/deploy/debian/copyright" "$docs/copyright"
+gzip -n -9 -c "$repository/deploy/debian/third-party-notices" \
+  >"$docs/third-party-notices.gz"
+{
+  printf 'zitat (%s) unstable; urgency=medium\n\n' "$version"
+  printf '  * Build from Git commit %s.\n\n' "$(git -C "$repository" rev-parse HEAD)"
+  printf ' -- Ori Livneh <ori.livneh@gmail.com>  %s\n' \
+    "$(LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S +0000')"
+} | gzip -n -9 >"$docs/changelog.gz"
 
 package="$repository/artifacts/zitat_${version}_$1.deb"
 (

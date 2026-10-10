@@ -1,8 +1,27 @@
 #!/bin/sh
 set -e
 
-if [ "$1" = configure ]; then
-  systemctl daemon-reload
-  systemctl enable zitat.service
-  systemctl restart zitat.service
-fi
+case "$1" in
+  configure|abort-upgrade|abort-deconfigure|abort-remove)
+    # Only removes masks created by deb-systemd-helper, not administrator masks.
+    deb-systemd-helper unmask zitat.service >/dev/null || true
+    # Adopt the enabled state from packages that used systemctl directly.
+    if [ -n "${2-}" ] && ! deb-systemd-helper --quiet debian-installed zitat.service; then
+      deb-systemd-helper update-state zitat.service >/dev/null || true
+    fi
+    if deb-systemd-helper --quiet was-enabled zitat.service; then
+      deb-systemd-helper enable zitat.service >/dev/null || true
+    else
+      deb-systemd-helper update-state zitat.service >/dev/null || true
+    fi
+
+    if [ -d /run/systemd/system ]; then
+      systemctl --system daemon-reload >/dev/null || true
+      action=start
+      if [ -n "${2-}" ]; then
+        action=restart
+      fi
+      deb-systemd-invoke "$action" zitat.service >/dev/null || true
+    fi
+    ;;
+esac

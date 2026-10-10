@@ -1,0 +1,40 @@
+Zitat
+https://github.com/atdt/zitat
+
+Copyright (c) 2026 Ori Livneh
+Licensed under the MIT license:
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Bundled dependencies
+--------------------
+
+The self-contained executable includes .NET Runtime and ASP.NET Core
+10.0.12, Microsoft.Extensions libraries, and FSharp.Core under the MIT
+license, Falco 5.2.0 and Falco.Markup 1.4.0 under Apache-2.0, and
+ZstdSharp.Port 0.8.6 under the MIT license, with Zstandard under BSD-3-Clause.
+
+Microsoft.Extensions libraries: Copyright (c) Microsoft Corporation.
+Falco: Copyright 2025 Pim Brouwers.
+Falco.Markup: Copyright 2022 Pim Brouwers.
+
+The Apache-2.0 license text is in /usr/share/common-licenses/Apache-2.0.
+Additional copyright and license notices for these dependencies, including
+libraries embedded in .NET Runtime, are in third-party-notices.gz in this
+directory. Update those notices when changing the bundled dependencies.

@@ -8,10 +8,18 @@ version: ${ZITAT_VERSION}
 version_schema: none
 section: misc
 maintainer: Ori Livneh <ori.livneh@gmail.com>
-description: Zitat journal search
+description: |
+  web interface and HTTP API for systemd journals
+  Search and browse systemd journal files through a web interface or HTTP API.
+  Reads local journals and journals collected by systemd-journal-remote.
 homepage: https://github.com/atdt/zitat
+license: MIT
 depends:
   - systemd
+  - init-system-helpers (>= 1.54)
+  - libc6 (>= 2.34)
+  - libstdc++6
+  - libgcc-s1
 
 contents:
   - src: artifacts/deb-root/usr/lib/zitat
@@ -22,6 +30,11 @@ contents:
   - src: deploy/zitat.default
     dst: /etc/default/zitat
     type: config
+  - src: artifacts/deb-root/usr/share/doc/zitat
+    dst: /usr/share/doc/zitat
+    type: tree
+  - src: deploy/debian/lintian-overrides
+    dst: /usr/share/lintian/overrides/zitat
 
 scripts:
   postinstall: deploy/debian/postinst
