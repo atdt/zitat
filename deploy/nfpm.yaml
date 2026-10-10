@@ -1,0 +1,29 @@
+# Debian package for Zitat, built by scripts/package-deb.sh, which sets the
+# environment variables below and stages the publish output in
+# artifacts/deb-root. nfpm does not expand environment variables in contents.
+name: zitat
+arch: ${ZITAT_DEB_ARCH}
+platform: linux
+version: ${ZITAT_VERSION}
+version_schema: none
+section: misc
+maintainer: Ori Livneh <ori.livneh@gmail.com>
+description: Zitat journal search
+homepage: https://github.com/atdt/zitat
+depends:
+  - systemd
+
+contents:
+  - src: artifacts/deb-root/usr/lib/zitat
+    dst: /usr/lib/zitat
+    type: tree
+  - src: deploy/zitat.service
+    dst: /usr/lib/systemd/system/zitat.service
+  - src: deploy/zitat.default
+    dst: /etc/default/zitat
+    type: config
+
+scripts:
+  postinstall: deploy/debian/postinst
+  preremove: deploy/debian/prerm
+  postremove: deploy/debian/postrm

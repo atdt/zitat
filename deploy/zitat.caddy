@@ -1,5 +1,0 @@
-# Imported into the tailnet site of xtal's Caddy.
-redir /zitat /zitat/
-handle_path /zitat/* {
-	reverse_proxy 127.0.0.1:8080
-}

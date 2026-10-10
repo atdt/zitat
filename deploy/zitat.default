@@ -1,0 +1,8 @@
+# Environment for zitat.service. Uncomment a setting to override the value
+# that the unit sets.
+
+# URLs on which the HTTP server listens.
+#ASPNETCORE_URLS=http://127.0.0.1:8080
+
+# Root directory searched for journal files.
+#Zitat__JournalDirectory=/var/log/journal

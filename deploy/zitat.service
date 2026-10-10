@@ -6,24 +6,20 @@ Wants=network-online.target
 [Service]
 Type=notify
 DynamicUser=yes
-# systemd-journal grants read access to local journal files.
-# systemd-journal-remote grants read access to journals received from
-# other hosts over the network (present only on log-aggregator hosts).
-SupplementaryGroups=systemd-journal systemd-journal-remote
-WorkingDirectory=/opt/zitat
-ExecStart=/opt/zitat/zitat
+# The systemd-journal group grants read access to local journal files.
+# To read journals collected by systemd-journal-remote, add the
+# systemd-journal-remote group to SupplementaryGroups in a drop-in.
+SupplementaryGroups=systemd-journal
+WorkingDirectory=/usr/lib/zitat
+ExecStart=/usr/lib/zitat/zitat
 Environment=ASPNETCORE_URLS=http://127.0.0.1:8080
 Environment=Zitat__JournalDirectory=/var/log/journal
-EnvironmentFile=-/etc/zitat.env
+EnvironmentFile=-/etc/default/zitat
 # A failed hosted service can stop the host with a clean exit. Restart it
 # even when systemd does not classify the exit as a failure.
 Restart=always
 RestartSec=5s
 
-# Resource limits target a host with 2 GB of memory and four CPU cores.
-MemoryHigh=192M
-MemoryMax=256M
-CPUQuota=150%
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectHome=yes

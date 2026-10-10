@@ -4,6 +4,7 @@ set -eu
 repository=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 output="$repository/artifacts/linux-x64"
 
+rm -rf "$output"
 dotnet publish "$repository/src/Zitat/Zitat.fsproj" \
   --configuration Release \
   --runtime linux-x64 \
