@@ -20,6 +20,58 @@ module CorpusTests =
         test (JournalReader set)
 
     [<Fact>]
+    let ``indexed filters see a hash table initialized after the file is opened`` () =
+        let directory = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName())
+        Directory.CreateDirectory directory |> ignore
+
+        try
+            let original =
+                Directory.EnumerateFiles(Corpus.path, "*.journal", SearchOption.AllDirectories)
+                |> Seq.head
+
+            let path = Path.Combine(directory, "system.journal")
+            File.Copy(original, path)
+
+            use writer =
+                new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite)
+
+            writer.Position <- 104L
+            let table = Array.zeroCreate<byte> 16
+            writer.ReadExactly table
+            writer.Position <- 104L
+            writer.Write(Array.zeroCreate<byte> 16)
+            writer.Flush()
+
+            use set = new JournalSet(directory, NullLogger.Instance)
+            set.Refresh()
+            let reader = JournalReader set
+            let page = reader.Search { Query.empty with Limit = 1000 }
+            Assert.NotEmpty page
+            let application = page |> List.pick _.Application
+
+            writer.Position <- 104L
+            writer.Write table
+            writer.Flush()
+
+            let query =
+                { Query.empty with
+                    Application = Some application
+                    Limit = 10
+                }
+
+            let expected =
+                page |> List.filter (Query.matches query) |> List.truncate query.Limit
+
+            Assert.NotEmpty expected
+
+            Assert.Equal<string list>(
+                expected |> List.map _.Cursor,
+                reader.Search query |> List.map _.Cursor
+            )
+        finally
+            Directory.Delete(directory, true)
+
+    [<Fact>]
     let ``every field resolves to the object the entry references`` () =
         use set = new JournalSet(Corpus.path, NullLogger.Instance)
         set.Refresh()

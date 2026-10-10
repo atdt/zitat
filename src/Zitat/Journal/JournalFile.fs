@@ -140,8 +140,6 @@ type JournalFile private (mapping: Mapping) =
     let headerSize = int64 (mapping.ReadUInt64 88L)
     let fileId = mapping.ToArray(24L, 16)
     let seqnumId = mapping.ToArray(72L, 16)
-    let dataHashTableOffset = int64 (mapping.ReadUInt64 104L)
-    let dataHashTableSize = int64 (mapping.ReadUInt64 112L)
 
     let entryItemWidth = if compact then 4L else 16L
 
@@ -378,9 +376,13 @@ type JournalFile private (mapping: Mapping) =
         EntryArrayChain(mapping, compact, arrayHead, first, total)
 
     member this.FindData(payload: ReadOnlySpan<byte>) : int64 voption =
+        // The hash table is initialized after the new file's header is written.
+        let dataHashTableSize = int64 (mapping.ReadUInt64 112L)
+
         if dataHashTableSize <= 0L then
             ValueNone
         else
+            let dataHashTableOffset = int64 (mapping.ReadUInt64 104L)
             let hash = SipHash.hash (ReadOnlySpan<byte> fileId) payload
             let buckets = uint64 (dataHashTableSize / Format.HashItemSize)
             let bucket = int64 (hash % buckets)
