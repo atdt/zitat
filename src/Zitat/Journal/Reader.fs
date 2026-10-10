@@ -133,7 +133,7 @@ type JournalSet(root: string, logger: ILogger) =
                 try
                     let stale =
                         match files.TryGetValue path with
-                        | true, file -> file.MappedLength <> FileInfo(path).Length
+                        | true, file -> not (file.IsCurrent())
                         | _ -> true
 
                     if stale then

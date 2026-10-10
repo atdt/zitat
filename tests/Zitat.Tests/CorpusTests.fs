@@ -19,6 +19,65 @@ module CorpusTests =
         set.Refresh()
         test (JournalReader set)
 
+    [<Theory>]
+    [<InlineData(true)>]
+    [<InlineData(false)>]
+    let ``refresh discovers a replacement journal of the same size`` (archive: bool) =
+        let directory = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName())
+        Directory.CreateDirectory directory |> ignore
+
+        try
+            let corpus = Path.Combine(Corpus.path, "1887c08eb8464b0998290f8fd4bd0b6e")
+
+            let original =
+                Directory.EnumerateFiles(corpus, "system@*-000000000000045d-*.journal")
+                |> Seq.exactlyOne
+
+            let replacement = Path.Combine(corpus, "system.journal")
+            Assert.Equal(FileInfo(original).Length, FileInfo(replacement).Length)
+
+            let path = Path.Combine(directory, "system.journal")
+            File.Copy(original, path)
+
+            use set = new JournalSet(directory, NullLogger.Instance)
+            set.Refresh()
+            let reader = JournalReader set
+            let anchor = reader.Search Query.empty |> Assert.Single
+
+            if archive then
+                File.Move(path, Path.Combine(directory, "system@rotated.journal"))
+            else
+                File.Delete path
+
+            File.Copy(replacement, path)
+            set.Refresh()
+
+            use fresh = new JournalSet(directory, NullLogger.Instance)
+            fresh.Refresh()
+            let expected = JournalReader fresh
+            let page = expected.Search Query.empty
+            Assert.Equal((if archive then 5 else 4), page.Length)
+
+            Assert.Equal<string list>(
+                page |> List.map _.Cursor,
+                reader.Search Query.empty |> List.map _.Cursor
+            )
+
+            let query =
+                { Query.empty with
+                    Before = Some anchor.Cursor
+                }
+
+            let forward = expected.Forward query
+            Assert.Equal(4, forward.Length)
+
+            Assert.Equal<string list>(
+                forward |> List.map _.Cursor,
+                reader.Forward query |> List.map _.Cursor
+            )
+        finally
+            Directory.Delete(directory, true)
+
     [<Fact>]
     let ``indexed filters see a hash table initialized after the file is opened`` () =
         let directory = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName())

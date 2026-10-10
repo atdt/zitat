@@ -1,6 +1,7 @@
 namespace Zitat.Journal
 
 open System
+open System.IO
 open System.Text
 
 [<Struct>]
@@ -203,6 +204,23 @@ type JournalFile private (mapping: Mapping) =
     member _.IncompatibleFlags = incompatible
 
     member _.MappedLength = mapping.Length
+
+    member internal _.IsCurrent() =
+        use handle =
+            File.OpenHandle(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite ||| FileShare.Delete
+            )
+
+        if RandomAccess.GetLength handle <> mapping.Length then
+            false
+        else
+            // Rotation can replace the path with a different file of equal size.
+            let currentId = Array.zeroCreate<byte> 16
+            let count = RandomAccess.Read(handle, Span<byte> currentId, 24L)
+            count = currentId.Length && currentId = fileId
 
     member _.State =
         match mapping.ReadByte 16L with

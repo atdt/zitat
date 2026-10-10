@@ -20,7 +20,7 @@ type JournalFollower
     // Reading the tails finds them without a directory scan or remapping.
     let tailInterval = TimeSpan.FromMilliseconds 200.
 
-    // Only a new, vanished, or grown file needs a Refresh, and the watcher
+    // Only a new, vanished, replaced, or resized file needs a Refresh, and the watcher
     // reports those. Polling covers the events it drops.
     let refreshInterval = TimeSpan.FromSeconds 1.
 
