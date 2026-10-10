@@ -25,6 +25,8 @@ PrivateTmp=yes
 ProtectHome=yes
 ProtectSystem=strict
 ReadOnlyPaths=/var/log/journal
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 
 [Install]
 WantedBy=multi-user.target
